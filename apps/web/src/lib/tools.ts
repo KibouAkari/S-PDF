@@ -42,7 +42,7 @@ export const TOOLS: ToolMeta[] = [
   {
     id: "editor",
     title: "Edit PDF",
-    description: "Add and move text, images, and shapes directly on the page — like a real editor.",
+    description: "Add and move text, images, and shapes directly on the page, like a real editor.",
     path: "/tools/editor",
     icon: PenTool,
     category: "Edit",
@@ -106,7 +106,7 @@ export const TOOLS: ToolMeta[] = [
   {
     id: "rotate",
     title: "Rotate Pages",
-    description: "Rotate every page — or just the ones you pick — in one click.",
+    description: "Rotate every page, or just the ones you pick, in one click.",
     path: "/tools/organize?mode=rotate",
     icon: RotateCw,
     category: "Organize",

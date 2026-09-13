@@ -14,7 +14,7 @@ export function Home() {
           All your PDF tools, in one place
         </h1>
         <p className="mx-auto mt-3 max-w-xl text-ink-300">
-          Merge, convert, edit and clean up your PDFs — quickly and without a subscription.
+          Merge, convert, edit and clean up your PDFs! Quickly and without a subscription or needing to pay.
         </p>
       </div>
 
