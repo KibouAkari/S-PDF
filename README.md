@@ -85,7 +85,11 @@ service (there is no Node API in this deployment path):
 ```json
 {
   "services": {
-    "web": { "root": "apps/web", "framework": "vite" },
+    "web": {
+      "root": "apps/web",
+      "framework": "vite",
+      "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+    },
     "converter": { "root": "services/converter", "entrypoint": "main:app" }
   },
   "rewrites": [
@@ -99,6 +103,11 @@ service (there is no Node API in this deployment path):
   (not classic zero-config Functions), so the Python service needs an explicit
   `entrypoint: "main:app"` pointing at the FastAPI `app` object in
   `services/converter/main.py` - there's no `api/` folder involved.
+- The `web` service's own `rewrites` fall back every path to `/index.html`.
+  Without this, visiting a client-side route directly (e.g. `/tools/organize`,
+  or any unknown path meant to hit the custom 404 page) returns Vercel's
+  generic static 404 instead of the React app, since the static file for
+  that path doesn't actually exist on disk.
 - Import the repo into Vercel as a single project; it will pick up both
   services from `vercel.json` automatically.
 - **Known limitation:** Word→PDF needs LibreOffice, which isn't available in

@@ -9,7 +9,7 @@ export function Home() {
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-14">
-      <div className="mb-10 text-center">
+      <div className="animate-fade-in-up mb-10 text-center">
         <h1 className="text-3xl font-semibold tracking-tight text-ink-50 sm:text-4xl">
           All your PDF tools, in one place
         </h1>
@@ -18,9 +18,9 @@ export function Home() {
         </p>
       </div>
 
-      <Link to="/tools/organize" className="block">
-        <div className="mb-10 flex flex-col items-center gap-6 rounded-2xl border border-brand-500/30 bg-brand-500/10 p-8 text-center transition-colors hover:border-brand-400/50 sm:flex-row sm:text-left">
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white">
+      <Link to="/tools/organize" className="group animate-fade-in-up block" style={{ animationDelay: "80ms" }}>
+        <div className="mb-10 flex flex-col items-center gap-6 rounded-2xl border border-brand-500/30 bg-brand-500/10 p-8 text-center transition-all duration-200 hover:border-brand-400/50 hover:shadow-lg sm:flex-row sm:text-left">
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-brand-600 text-white transition-transform duration-300 group-hover:rotate-6 group-hover:scale-110">
             <Combine className="h-8 w-8" strokeWidth={1.75} />
           </span>
           <div className="flex-1">
@@ -29,18 +29,20 @@ export function Home() {
               Combine multiple PDFs into one, and drag pages into exactly the order you want.
             </p>
           </div>
-          <Button size="lg" className="shrink-0">
+          <Button size="lg" className="shrink-0 transition-transform duration-200 group-hover:translate-x-1">
             Merge PDFs <ArrowRight className="h-4 w-4" />
           </Button>
         </div>
       </Link>
 
-      <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-ink-400">
+      <h2 className="animate-fade-in-up mb-4 text-sm font-semibold uppercase tracking-wider text-ink-400" style={{ animationDelay: "140ms" }}>
         More tools
       </h2>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {otherTools.map((tool) => (
-          <ToolCard key={tool.id} tool={tool} />
+        {otherTools.map((tool, i) => (
+          <div key={tool.id} className="animate-fade-in-up" style={{ animationDelay: `${160 + i * 40}ms` }}>
+            <ToolCard tool={tool} />
+          </div>
         ))}
       </div>
     </div>

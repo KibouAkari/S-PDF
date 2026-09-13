@@ -9,6 +9,9 @@ function GithubIcon({ className }: { className?: string }) {
   );
 }
 
+const navLinkClass =
+  "relative py-1 text-ink-300 transition-colors hover:text-ink-50 after:absolute after:bottom-0 after:left-0 after:h-px after:w-0 after:bg-brand-400 after:transition-all after:duration-200 hover:after:w-full after:content-['']";
+
 export function Layout() {
   const location = useLocation();
   const isHome = location.pathname === "/";
@@ -17,24 +20,24 @@ export function Layout() {
     <div className="min-h-screen flex flex-col">
       <header className="sticky top-0 z-40 border-b border-ink-800/80 bg-ink-950 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <Link to="/" className="flex items-center gap-2 font-semibold text-lg tracking-tight">
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-900/40">
+          <Link to="/" className="group flex items-center gap-2 font-semibold text-lg tracking-tight">
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-brand-400 to-brand-600 shadow-lg shadow-brand-900/40 transition-transform duration-200 group-hover:-rotate-6 group-hover:scale-105">
               <FileStack className="h-4.5 w-4.5 text-white" strokeWidth={2.2} />
             </span>
             S-PDF
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-ink-300 sm:flex">
-            <Link to="/tools/organize" className="hover:text-ink-50 transition-colors">Organize</Link>
-            <Link to="/tools/pdf-to-word" className="hover:text-ink-50 transition-colors">Convert</Link>
-            <Link to="/tools/editor" className="hover:text-ink-50 transition-colors">Edit</Link>
-            <Link to="/tools/compress" className="hover:text-ink-50 transition-colors">Enhance</Link>
+            <Link to="/tools/organize" className={navLinkClass}>Organize</Link>
+            <Link to="/tools/pdf-to-word" className={navLinkClass}>Convert</Link>
+            <Link to="/tools/editor" className={navLinkClass}>Edit</Link>
+            <Link to="/tools/compress" className={navLinkClass}>Enhance</Link>
           </nav>
           <a
             href="https://github.com/kibouakari"
             target="_blank"
             rel="noreferrer"
             aria-label="GitHub profile"
-            className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-600 text-ink-200 hover:bg-ink-800 transition-colors"
+            className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-600 text-ink-200 transition-all duration-200 hover:scale-105 hover:bg-ink-800 hover:text-ink-50 active:scale-95"
           >
             <GithubIcon className="h-4 w-4" />
           </a>
