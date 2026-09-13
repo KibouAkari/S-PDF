@@ -46,7 +46,8 @@ export function Layout() {
       </main>
 
       <footer className="border-t border-ink-800/80 py-8 text-center text-sm text-ink-400">
-        S-PDF — files are processed and discarded automatically, never stored.
+        <p>&copy; {new Date().getFullYear()} Kibou Akari. All rights reserved.</p>
+        <p className="mt-1 text-xs text-ink-500">Files are processed and discarded automatically — never stored.</p>
       </footer>
     </div>
   );

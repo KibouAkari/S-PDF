@@ -1,7 +1,13 @@
-# S-PDF
+<div align="center">
+  <img src="apps/web/public/favicon.svg" alt="S-PDF logo" width="72" height="72" />
 
-[![CI](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml/badge.svg)](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  # S-PDF
+
+  **Merge, convert, edit, and clean up your PDFs — fast, free, and self-hosted.**
+
+  [![CI](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml/badge.svg)](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</div>
 
 A fast, self-hosted, open-source alternative to Adobe Acrobat / iLovePDF.
 Merge, split, convert, watermark, compress and visually edit PDFs from a
