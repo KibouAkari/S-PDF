@@ -3,6 +3,15 @@
   "private": true,
   "version": "1.0.0",
   "description": "S-PDF – a self-hosted, open-source PDF platform (merge, split, convert, edit and more).",
+  "license": "MIT",
+  "author": "kibouakari",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kibouakari/S-PDF"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "workspaces": [
     "apps/*"
   ],

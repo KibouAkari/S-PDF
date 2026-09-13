@@ -36,7 +36,7 @@ convertRouter.post(
   upload.single("file"),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, "No file uploaded");
-    const response = await forwardToConverter("/convert/pdf-to-word", req.file);
+    const response = await forwardToConverter("/api/convert/pdf-to-word", req.file);
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -52,7 +52,7 @@ convertRouter.post(
   upload.single("file"),
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, "No file uploaded");
-    const response = await forwardToConverter("/convert/word-to-pdf", req.file);
+    const response = await forwardToConverter("/api/convert/word-to-pdf", req.file);
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", 'attachment; filename="converted.pdf"');
     res.send(Buffer.from(await response.arrayBuffer()));
@@ -66,7 +66,7 @@ convertRouter.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, "No file uploaded");
     const dpi = String(req.body.dpi ?? "150");
-    const response = await forwardToConverter("/convert/pdf-to-images", req.file, { dpi });
+    const response = await forwardToConverter("/api/convert/pdf-to-images", req.file, { dpi });
     res.setHeader("Content-Type", "application/zip");
     res.setHeader("Content-Disposition", 'attachment; filename="pages.zip"');
     res.send(Buffer.from(await response.arrayBuffer()));
@@ -80,7 +80,7 @@ convertRouter.post(
   asyncHandler(async (req, res) => {
     if (!req.file) throw new HttpError(400, "No file uploaded");
     const level = String(req.body.level ?? "medium");
-    const response = await forwardToConverter("/convert/compress", req.file, { level });
+    const response = await forwardToConverter("/api/convert/compress", req.file, { level });
     res.setHeader("Content-Type", "application/pdf");
     res.setHeader("Content-Disposition", 'attachment; filename="compressed.pdf"');
     res.send(Buffer.from(await response.arrayBuffer()));

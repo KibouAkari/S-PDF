@@ -9,7 +9,6 @@ Handles the conversions that are impractical to do purely in Node:
 - PDF compression (PyMuPDF garbage collection + image downsampling)
 """
 
-import os
 import shutil
 import subprocess
 import tempfile
@@ -22,6 +21,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from pdf2docx import Converter
 
+from routes_pdf import router as pdf_router
+
 app = FastAPI(title="S-PDF Converter Service")
 
 app.add_middleware(
@@ -31,17 +32,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(pdf_router)
+
 
 def _soffice_path() -> str | None:
     return shutil.which("soffice") or shutil.which("libreoffice")
 
 
 @app.get("/health")
+@app.get("/api/health")
 def health():
     return {"status": "ok", "libreoffice": bool(_soffice_path())}
 
 
-@app.post("/convert/pdf-to-word")
+@app.post("/api/convert/pdf-to-word")
 async def pdf_to_word(file: UploadFile = File(...)):
     if file.content_type != "application/pdf":
         raise HTTPException(400, "Expected a PDF file")
@@ -70,7 +74,7 @@ async def pdf_to_word(file: UploadFile = File(...)):
         )
 
 
-@app.post("/convert/word-to-pdf")
+@app.post("/api/convert/word-to-pdf")
 async def word_to_pdf(file: UploadFile = File(...)):
     soffice = _soffice_path()
     if not soffice:
@@ -102,7 +106,7 @@ async def word_to_pdf(file: UploadFile = File(...)):
         )
 
 
-@app.post("/convert/pdf-to-images")
+@app.post("/api/convert/pdf-to-images")
 async def pdf_to_images(file: UploadFile = File(...), dpi: int = Form(150)):
     if file.content_type != "application/pdf":
         raise HTTPException(400, "Expected a PDF file")
@@ -134,7 +138,7 @@ async def pdf_to_images(file: UploadFile = File(...), dpi: int = Form(150)):
         )
 
 
-@app.post("/convert/compress")
+@app.post("/api/convert/compress")
 async def compress(file: UploadFile = File(...), level: str = Form("medium")):
     if file.content_type != "application/pdf":
         raise HTTPException(400, "Expected a PDF file")
