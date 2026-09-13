@@ -93,7 +93,6 @@ export function Editor() {
   const [status, setStatus] = useState<"idle" | "loading" | "error" | "success">("idle");
   const [message, setMessage] = useState<string>();
 
-  const canvasElRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<Canvas | null>(null);
   const pageObjectsRef = useRef<Map<number, Record<string, unknown>[]>>(new Map());
   const currentPageRef = useRef(0);
@@ -130,14 +129,16 @@ export function Editor() {
     [file]
   );
 
-  useEffect(() => {
-    if (!canvasElRef.current) return;
-    const canvas = new Canvas(canvasElRef.current, { preserveObjectStacking: true });
-    fabricRef.current = canvas;
-    return () => {
-      canvas.dispose();
+  // A callback ref (not useEffect) so Fabric initializes exactly when the
+  // <canvas> element mounts — it only exists in the DOM once a file is loaded,
+  // so a mount-only effect would run too early and never see the element.
+  const attachCanvas = useCallback((el: HTMLCanvasElement | null) => {
+    if (el) {
+      fabricRef.current = new Canvas(el, { preserveObjectStacking: true });
+    } else if (fabricRef.current) {
+      fabricRef.current.dispose();
       fabricRef.current = null;
-    };
+    }
   }, []);
 
   async function handleFile(f: File) {
@@ -297,7 +298,7 @@ export function Editor() {
         </div>
 
         <Card className="flex justify-center overflow-auto p-4">
-          <canvas ref={canvasElRef} className="rounded-lg shadow-lg" />
+          <canvas ref={attachCanvas} className="rounded-lg shadow-lg" />
         </Card>
       </div>
 

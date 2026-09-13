@@ -18,8 +18,7 @@ export async function renderPdfThumbnails(
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    const ctx = canvas.getContext("2d")!;
-    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+    await page.render({ canvas, viewport }).promise;
     results.push({ dataUrl: canvas.toDataURL("image/png"), width: viewport.width, height: viewport.height });
   }
 
@@ -36,8 +35,7 @@ export async function renderPdfPage(file: File, pageIndex: number, scale = 1.5) 
   const canvas = document.createElement("canvas");
   canvas.width = viewport.width;
   canvas.height = viewport.height;
-  const ctx = canvas.getContext("2d")!;
-  await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+  await page.render({ canvas, viewport }).promise;
   const pageSize = page.getViewport({ scale: 1 });
   await doc.cleanup();
   return { canvas, pdfWidth: pageSize.width, pdfHeight: pageSize.height };
