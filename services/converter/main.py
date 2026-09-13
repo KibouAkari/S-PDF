@@ -9,6 +9,7 @@ Handles the conversions that are impractical to do purely in Node:
 - PDF compression (PyMuPDF garbage collection + image downsampling)
 """
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -16,9 +17,9 @@ import zipfile
 from pathlib import Path
 
 import fitz  # PyMuPDF
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import JSONResponse, Response
 from pdf2docx import Converter
 
 from routes_pdf import router as pdf_router
@@ -27,10 +28,24 @@ app = FastAPI(title="S-PDF Converter Service")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # only reachable from the trusted API service, not the public internet
-    allow_methods=["POST"],
+    # This service is a public, unauthenticated API with no cookies/sessions,
+    # so a wildcard origin carries no CSRF/credential-leak risk.
+    allow_origins=["*"],
+    allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
+
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "100")) * 1024 * 1024
+
+
+@app.middleware("http")
+async def limit_upload_size(request: Request, call_next):
+    """Rejects oversized request bodies before they're buffered into memory."""
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_UPLOAD_BYTES:
+        return JSONResponse(status_code=413, content={"error": "File too large"})
+    return await call_next(request)
+
 
 app.include_router(pdf_router)
 

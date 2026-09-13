@@ -72,9 +72,24 @@ def _insert_rotated_text(page, x: float, y: float, text: str, size: float, color
     page.insert_text(point, text, fontsize=size, fontname="hebo", color=color, fill_opacity=opacity, morph=morph)
 
 
+def _open_pdf(data: bytes) -> fitz.Document:
+    """Opens user-supplied bytes as a PDF, turning corrupt/non-PDF uploads into a clean 400 instead of a 500."""
+    try:
+        doc = fitz.open(stream=data, filetype="pdf")
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(400, "Invalid or corrupted PDF file") from exc
+    if doc.page_count == 0:
+        doc.close()
+        raise HTTPException(400, "Invalid or corrupted PDF file")
+    return doc
+
+
+MAX_FILES = 50
+
+
 @router.post("/info")
 async def info(file: UploadFile = File(...)):
-    doc = fitz.open(stream=await file.read(), filetype="pdf")
+    doc = _open_pdf(await file.read())
     pages = [{"width": p.rect.width, "height": p.rect.height, "rotation": p.rotation} for p in doc]
     result = {"pageCount": doc.page_count, "pages": pages}
     doc.close()
@@ -85,14 +100,18 @@ async def info(file: UploadFile = File(...)):
 async def organize(files: list[UploadFile] = File(...), plan: str = Form(...)):
     if not files:
         raise HTTPException(400, "No files uploaded")
+    if len(files) > MAX_FILES:
+        raise HTTPException(400, f"Too many files (max {MAX_FILES})")
     try:
         plan_items = json.loads(plan)
     except json.JSONDecodeError:
         raise HTTPException(400, "`plan` must be valid JSON")
     if not isinstance(plan_items, list) or not plan_items:
         raise HTTPException(400, "`plan` must be a non-empty array")
+    if len(plan_items) > 5000:
+        raise HTTPException(400, "Too many pages in plan (max 5000)")
 
-    source_docs = [fitz.open(stream=await f.read(), filetype="pdf") for f in files]
+    source_docs = [_open_pdf(await f.read()) for f in files]
     output = fitz.open()
 
     try:
@@ -127,7 +146,7 @@ async def split(file: UploadFile = File(...), ranges: str = Form(...)):
     if not spec:
         raise HTTPException(400, "`ranges` is required")
 
-    src = fitz.open(stream=await file.read(), filetype="pdf")
+    src = _open_pdf(await file.read())
     groups = [g.strip() for g in spec.split(",") if g.strip()]
 
     buf = io.BytesIO()
@@ -164,7 +183,7 @@ async def watermark(
     font_size = _clamp(fontSize, 6, 300)
     rgb = _hex_to_rgb(color)
 
-    doc = fitz.open(stream=await file.read(), filetype="pdf")
+    doc = _open_pdf(await file.read())
     for page in doc:
         width, height = page.rect.width, page.rect.height
         text_width = fitz.get_text_length(text, fontname="hebo", fontsize=font_size)
@@ -197,7 +216,7 @@ async def page_numbers(
     font_size = _clamp(fontSize, 6, 48)
     margin = 28
 
-    doc = fitz.open(stream=await file.read(), filetype="pdf")
+    doc = _open_pdf(await file.read())
     total = doc.page_count
     for i, page in enumerate(doc):
         label = format.replace("{n}", str(startAt + i)).replace("{total}", str(total))
@@ -223,13 +242,19 @@ async def page_numbers(
 async def images_to_pdf(files: list[UploadFile] = File(...)):
     if not files:
         raise HTTPException(400, "No images uploaded")
+    if len(files) > MAX_FILES:
+        raise HTTPException(400, f"Too many files (max {MAX_FILES})")
 
     PAGE_W, PAGE_H = 595.28, 841.89
     margin = 24
 
     doc = fitz.open()
     for f in files:
-        pix = fitz.Pixmap(await f.read())
+        try:
+            pix = fitz.Pixmap(await f.read())
+        except Exception as exc:  # noqa: BLE001
+            doc.close()
+            raise HTTPException(400, f"Invalid image file: {f.filename}") from exc
         if pix.alpha:
             pix = fitz.Pixmap(pix, 0)
         max_w, max_h = PAGE_W - margin * 2, PAGE_H - margin * 2
@@ -252,8 +277,10 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
         raise HTTPException(400, "`objects` must be valid JSON")
     if not isinstance(items, list):
         raise HTTPException(400, "`objects` must be an array")
+    if len(items) > 5000:
+        raise HTTPException(400, "Too many objects (max 5000)")
 
-    doc = fitz.open(stream=await file.read(), filetype="pdf")
+    doc = _open_pdf(await file.read())
 
     for obj in items:
         page_index = obj.get("page")
@@ -265,12 +292,12 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
 
         # Incoming x/y use PDF's bottom-left origin (matching /api/pdf/info); flip to fitz's top-left space.
         if obj_type == "rect":
-            x, y, w, h = obj["x"], obj["y"], obj["width"], obj["height"]
+            x, y, w, h = obj.get("x", 0), obj.get("y", 0), obj.get("width", 0), obj.get("height", 0)
             top_y = page_height - (y + h)
             fill = _hex_to_rgb(obj.get("color", "#ffffff"))
             page.draw_rect(fitz.Rect(x, top_y, x + w, top_y + h), color=None, fill=fill)
         elif obj_type == "text":
-            x, y = obj["x"], obj["y"]
+            x, y = obj.get("x", 0), obj.get("y", 0)
             font = FONT_MAP[(bool(obj.get("bold")), bool(obj.get("italic")))]
             color = _hex_to_rgb(obj.get("color", "#000000"))
             page.insert_text(
@@ -281,11 +308,16 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
                 color=color,
             )
         elif obj_type == "image":
-            x, y, w, h = obj["x"], obj["y"], obj["width"], obj["height"]
+            x, y, w, h = obj.get("x", 0), obj.get("y", 0), obj.get("width", 0), obj.get("height", 0)
             top_y = page_height - (y + h)
             data_url = obj.get("dataUrl", "")
             b64 = data_url.split(",", 1)[1] if "," in data_url else ""
-            page.insert_image(fitz.Rect(x, top_y, x + w, top_y + h), stream=base64.b64decode(b64))
+            try:
+                img_bytes = base64.b64decode(b64, validate=False)
+                page.insert_image(fitz.Rect(x, top_y, x + w, top_y + h), stream=img_bytes)
+            except Exception as exc:  # noqa: BLE001
+                doc.close()
+                raise HTTPException(400, "Invalid image data in edit objects") from exc
 
     data = doc.tobytes()
     doc.close()

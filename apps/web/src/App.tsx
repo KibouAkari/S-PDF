@@ -11,6 +11,7 @@ import { WordToPdf } from "./pages/tools/WordToPdf";
 import { PdfToImages } from "./pages/tools/PdfToImages";
 import { ImagesToPdf } from "./pages/tools/ImagesToPdf";
 import { Editor } from "./pages/tools/Editor";
+import { NotFound } from "./pages/NotFound";
 
 function App() {
   return (
@@ -27,6 +28,7 @@ function App() {
         <Route path="/tools/pdf-to-images" element={<PdfToImages />} />
         <Route path="/tools/images-to-pdf" element={<ImagesToPdf />} />
         <Route path="/tools/editor" element={<Editor />} />
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
   );

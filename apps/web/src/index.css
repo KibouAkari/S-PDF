@@ -70,3 +70,21 @@ body::before {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--color-ink-600); border-radius: 999px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--color-ink-500); }
+
+@keyframes wiggle {
+  0%, 100% { transform: rotate(-4deg); }
+  50% { transform: rotate(4deg); }
+}
+
+@keyframes paper-fall {
+  0% { transform: translate(0, 0) rotate(0deg); opacity: 1; }
+  100% { transform: translate(var(--dx, 0px), 160px) rotate(var(--rot, 90deg)); opacity: 0; }
+}
+
+.animate-wiggle {
+  animation: wiggle 1.6s ease-in-out infinite;
+}
+
+.animate-paper-fall {
+  animation: paper-fall 900ms ease-in forwards;
+}
