@@ -1,0 +1,28 @@
+services:
+  converter:
+    build: ./services/converter
+    restart: unless-stopped
+    expose:
+      - "8001"
+
+  api:
+    build: ./apps/api
+    restart: unless-stopped
+    environment:
+      PORT: 4000
+      CONVERTER_URL: http://converter:8001
+      CORS_ORIGIN: http://localhost:8080
+      MAX_FILE_SIZE_MB: 100
+      MAX_FILES: 30
+    depends_on:
+      - converter
+    expose:
+      - "4000"
+
+  web:
+    build: ./apps/web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "8080:80"

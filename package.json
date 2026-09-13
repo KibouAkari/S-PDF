@@ -1,0 +1,20 @@
+{
+  "name": "s-pdf",
+  "private": true,
+  "version": "1.0.0",
+  "description": "S-PDF – a self-hosted, open-source PDF platform (merge, split, convert, edit and more).",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n API,WEB -c blue,green \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w apps/api && npm run build -w apps/web",
+    "converter:install": "python -m venv services/converter/.venv && services\\converter\\.venv\\Scripts\\pip install -r services/converter/requirements.txt",
+    "converter:dev": "services\\converter\\.venv\\Scripts\\uvicorn main:app --reload --port 8001 --app-dir services/converter"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

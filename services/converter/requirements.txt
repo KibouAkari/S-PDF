@@ -1,0 +1,5 @@
+fastapi==0.115.4
+uvicorn[standard]==0.32.0
+python-multipart==0.0.12
+pdf2docx==0.5.8
+PyMuPDF==1.24.13
