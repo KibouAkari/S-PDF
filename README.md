@@ -80,7 +80,7 @@ service (there is no Node API in this deployment path):
 {
   "services": {
     "web": { "root": "apps/web", "framework": "vite" },
-    "converter": { "root": "services/converter" }
+    "converter": { "root": "services/converter", "entrypoint": "main:app" }
   },
   "rewrites": [
     { "source": "/api(/.*)?", "destination": { "type": "service", "service": "converter" } },
@@ -89,9 +89,10 @@ service (there is no Node API in this deployment path):
 }
 ```
 
-- `services/converter/api/index.py` + `services/converter/vercel.json` wire the
-  FastAPI app up as a Vercel Python function using the standard zero-config
-  pattern (`api/index.py` exporting `app`, with all paths rewritten to it).
+- This uses Vercel's [Services](https://vercel.com/docs/services) feature
+  (not classic zero-config Functions), so the Python service needs an explicit
+  `entrypoint: "main:app"` pointing at the FastAPI `app` object in
+  `services/converter/main.py` — there's no `api/` folder involved.
 - Import the repo into Vercel as a single project; it will pick up both
   services from `vercel.json` automatically.
 - **Known limitation:** Word→PDF needs LibreOffice, which isn't available in
@@ -109,7 +110,7 @@ apps/
   api/      Express API — pdf-lib based; used for local dev & Docker
 services/
   converter/  FastAPI microservice — full PDF API (PyMuPDF) + pdf2docx / LibreOffice conversions
-    api/index.py  Vercel entrypoint (re-exports the FastAPI app)
+    main.py     entrypoint referenced by vercel.json as "main:app"
 ```
 
 ## Notes & limitations

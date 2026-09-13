@@ -5,7 +5,8 @@
             "framework": "vite"
         },
         "converter": {
-            "root": "services/converter"
+            "root": "services/converter",
+            "entrypoint": "main:app"
         }
     },
     "rewrites": [
