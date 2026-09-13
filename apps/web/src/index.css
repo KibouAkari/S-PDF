@@ -47,16 +47,18 @@ body {
 }
 
 /* Fixed to the viewport so the glow only ever appears near the top of the
-   screen, never as a hard band trailing down the rest of the page. */
+   screen, never as a hard band trailing down the rest of the page. Inset is
+   negative and blurred so the glow itself has no visible hard edge. */
 body::before {
   content: "";
   position: fixed;
-  inset: 0;
+  inset: -15%;
   z-index: -1;
   pointer-events: none;
+  filter: blur(70px);
   background:
-    radial-gradient(650px 650px at 78% -12%, rgba(20, 184, 166, 0.16), transparent 70%),
-    radial-gradient(520px 520px at 6% 68%, rgba(20, 184, 166, 0.035), transparent 72%);
+    radial-gradient(600px 600px at 82% 6%, rgba(20, 184, 166, 0.20), rgba(20, 184, 166, 0.05) 45%, transparent 75%),
+    radial-gradient(560px 560px at 8% 78%, rgba(20, 184, 166, 0.10), rgba(20, 184, 166, 0.03) 45%, transparent 75%);
 }
 
 ::selection {

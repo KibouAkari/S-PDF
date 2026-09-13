@@ -3,7 +3,7 @@
 
   # S-PDF
 
-  **Merge, convert, edit, and clean up your PDFs — fast, free, and self-hosted.**
+  **Merge, convert, edit, and clean up your PDFs - fast, free, and self-hosted.**
 
   [![CI](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml/badge.svg)](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -11,7 +11,7 @@
 
 A fast, self-hosted, open-source alternative to Adobe Acrobat / iLovePDF.
 Merge, split, convert, watermark, compress and visually edit PDFs from a
-clean, modern web UI — no subscriptions, no watermarked exports, no uploads
+clean, modern web UI - no subscriptions, no watermarked exports, no uploads
 to a third party.
 
 ## Stack
@@ -34,14 +34,14 @@ for the duration of a request and are never written to disk or persisted.
 
 ## Features
 
-- **Merge & Organize** — combine multiple PDFs, drag pages into any order, rotate or delete pages, export as one file.
-- **Split** — extract page ranges into separate PDFs (returned as a ZIP).
-- **Edit PDF** — add and freely move text, images and shapes on any page (fabric.js canvas over a `pdf.js`-rendered background), then flatten to a new PDF.
-- **PDF ⇄ Word** — `pdf2docx` for PDF→Word; LibreOffice headless for Word→PDF.
-- **PDF ⇄ Images** — rasterize pages to PNG at a chosen DPI, or build a PDF from a set of images.
-- **Watermark** — centered or tiled text watermark with color/opacity/rotation controls.
-- **Page numbers** — configurable position, start number and format string.
-- **Compress** — re-encodes oversized embedded images and rebuilds the PDF object structure.
+- **Merge & Organize** - combine multiple PDFs, drag pages into any order, rotate or delete pages, export as one file.
+- **Split** - extract page ranges into separate PDFs (returned as a ZIP).
+- **Edit PDF** - add and freely move text, images and shapes on any page (fabric.js canvas over a `pdf.js`-rendered background), then flatten to a new PDF.
+- **PDF ⇄ Word** - `pdf2docx` for PDF→Word; LibreOffice headless for Word→PDF.
+- **PDF ⇄ Images** - rasterize pages to PNG at a chosen DPI, or build a PDF from a set of images.
+- **Watermark** - centered or tiled text watermark with color/opacity/rotation controls.
+- **Page numbers** - configurable position, start number and format string.
+- **Compress** - re-encodes oversized embedded images and rebuilds the PDF object structure.
 
 ## Getting started (local dev)
 
@@ -98,11 +98,11 @@ service (there is no Node API in this deployment path):
 - This uses Vercel's [Services](https://vercel.com/docs/services) feature
   (not classic zero-config Functions), so the Python service needs an explicit
   `entrypoint: "main:app"` pointing at the FastAPI `app` object in
-  `services/converter/main.py` — there's no `api/` folder involved.
+  `services/converter/main.py` - there's no `api/` folder involved.
 - Import the repo into Vercel as a single project; it will pick up both
   services from `vercel.json` automatically.
 - **Known limitation:** Word→PDF needs LibreOffice, which isn't available in
-  Vercel's serverless Python runtime — that endpoint will return a clear 503
+  Vercel's serverless Python runtime - that endpoint will return a clear 503
   there. It works fully in Docker/self-hosted deployments (see below).
 - **Known risk:** `pdf2docx` pulls in `opencv-python-headless` + `numpy`,
   which can push the function bundle close to Vercel's size limits. If a
@@ -113,9 +113,9 @@ service (there is no Node API in this deployment path):
 ```
 apps/
   web/      React frontend (Vite)
-  api/      Express API — pdf-lib based; used for local dev & Docker
+  api/      Express API - pdf-lib based; used for local dev & Docker
 services/
-  converter/  FastAPI microservice — full PDF API (PyMuPDF) + pdf2docx / LibreOffice conversions
+  converter/  FastAPI microservice - full PDF API (PyMuPDF) + pdf2docx / LibreOffice conversions
     main.py     entrypoint referenced by vercel.json as "main:app"
 ```
 
@@ -127,7 +127,7 @@ services/
 - The visual editor adds/moves new content and can redact/whiteout existing
   content with a filled rectangle; PDFs don't have reflowable text, so true
   in-place editing of pre-existing text works the same way professional PDF
-  editors do it — cover + re-draw.
+  editors do it - cover + re-draw.
 
 ## Contributing
 
@@ -140,4 +140,4 @@ opening a public issue.
 
 ## License
 
-[MIT](LICENSE) — do whatever you like with it, attribution appreciated.
+[MIT](LICENSE) - do whatever you like with it, attribution appreciated.
