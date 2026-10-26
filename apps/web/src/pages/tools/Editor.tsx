@@ -225,9 +225,9 @@ export function Editor() {
     const canvas = fabricRef.current;
     if (!canvas || !selected) return;
     selected.set(patch);
-    if (selected.spdfType === "source") {
-      selected.spdfChanged = true;
-      selected.spdfAction = "replace";
+    if ((selected as Editable).spdfType === "source") {
+      (selected as Editable).spdfChanged = true;
+      (selected as Editable).spdfAction = "replace";
     }
     selected.setCoords();
     canvas.requestRenderAll();
@@ -375,7 +375,7 @@ export function Editor() {
         canvas.add(text);
         canvas.setActiveObject(text);
         canvas.requestRenderAll();
-        text.enterEditing();
+        (text as Textbox).enterEditing();
         selection();
         recordHistory();
       });
@@ -642,8 +642,9 @@ export function Editor() {
         if (!size) continue;
         for (const raw of objs) {
           if (raw.spdfType === "preview-mask") continue;
-          const fake = raw as unknown as FabricObject;
-          const converted = fabricObjectToEditObject(fake, pageIndex, size.height);
+          const restored = await loadObjectByType(raw);
+          if (!restored) continue;
+          const converted = fabricObjectToEditObject(restored, pageIndex, size.height);
           if (converted) allObjects.push(converted);
         }
       }
@@ -718,14 +719,14 @@ export function Editor() {
       {selected && (
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-ink-700 bg-ink-800/70 p-3">
           <div className="mr-2 text-xs font-semibold text-ink-200">
-            {selected.spdfType === "source" ? `Existing ${selected.spdfKind} · ${selected.spdfId}` : "Selected object"}
+            {(selected as Editable).spdfType === "source" ? `Existing ${(selected as Editable).spdfKind} · ${(selected as Editable).spdfId}` : "Selected object"}
           </div>
-          {(selected instanceof Textbox || (selected.spdfType === "source" && selected.spdfKind === "text")) && (
+          {(selected instanceof Textbox || ((selected as Editable).spdfType === "source" && (selected as Editable).spdfKind === "text")) && (
             <>
               <label className="flex min-w-[190px] flex-1 flex-col gap-1 text-xs text-ink-300">
                 Text
                 <input className="rounded-md border border-ink-600 bg-ink-950 px-2 py-1.5 text-sm text-ink-50"
-                  value={selected instanceof Textbox ? selected.text : selected.spdfText ?? ""}
+                  value={selected instanceof Textbox ? selected.text : (selected as Editable).spdfText ?? ""}
                   onChange={(e) => updateSelected(selected instanceof Textbox
                     ? { text: e.target.value, spdfText: e.target.value }
                     : { spdfText: e.target.value })} />
@@ -733,7 +734,7 @@ export function Editor() {
               <label className="flex flex-col gap-1 text-xs text-ink-300">
                 Font
                 <select className="rounded-md border border-ink-600 bg-ink-950 px-2 py-1.5"
-                  value={selected.spdfFont || "helvetica"}
+                  value={(selected as Editable).spdfFont || "helvetica"}
                   onChange={(e) => updateSelected({
                     spdfFont: e.target.value,
                     ...(selected instanceof Textbox ? { fontFamily: e.target.value === "courier" ? "Courier New" : e.target.value === "times" ? "Times New Roman" : "Arial" } : {}),
@@ -747,20 +748,20 @@ export function Editor() {
                 Size
                 <input type="number" min="1" max="180"
                   className="w-20 rounded-md border border-ink-600 bg-ink-950 px-2 py-1.5 text-sm"
-                  value={Math.round(selected.spdfSize || (selected instanceof Textbox ? (selected.fontSize || 18) / RENDER_SCALE : 12))}
+                  value={Math.round((selected as Editable).spdfSize || (selected instanceof Textbox ? (selected.fontSize || 18) / RENDER_SCALE : 12))}
                   onChange={(e) => {
                     const size = Math.max(1, Math.min(180, Number(e.target.value) || 12));
                     updateSelected({ spdfSize: size, ...(selected instanceof Textbox ? { fontSize: size * RENDER_SCALE } : {}) });
                   }} />
               </label>
-              <button type="button" title="Bold" aria-label="Bold" aria-pressed={Boolean(selected.spdfBold)}
-                className={cn("rounded-md border border-ink-600 p-2", selected.spdfBold && "bg-brand-600")}
-                onClick={() => updateSelected({ spdfBold: !selected.spdfBold, ...(selected instanceof Textbox ? { fontWeight: !selected.spdfBold ? "bold" : "normal" } : {}) })}>
+              <button type="button" title="Bold" aria-label="Bold" aria-pressed={Boolean((selected as Editable).spdfBold)}
+                className={cn("rounded-md border border-ink-600 p-2", (selected as Editable).spdfBold && "bg-brand-600")}
+                onClick={() => updateSelected({ spdfBold: !(selected as Editable).spdfBold, ...(selected instanceof Textbox ? { fontWeight: !(selected as Editable).spdfBold ? "bold" : "normal" } : {}) })}>
                 <Bold className="h-4 w-4" />
               </button>
-              <button type="button" title="Italic" aria-label="Italic" aria-pressed={Boolean(selected.spdfItalic)}
-                className={cn("rounded-md border border-ink-600 p-2", selected.spdfItalic && "bg-brand-600")}
-                onClick={() => updateSelected({ spdfItalic: !selected.spdfItalic, ...(selected instanceof Textbox ? { fontStyle: !selected.spdfItalic ? "italic" : "normal" } : {}) })}>
+              <button type="button" title="Italic" aria-label="Italic" aria-pressed={Boolean((selected as Editable).spdfItalic)}
+                className={cn("rounded-md border border-ink-600 p-2", (selected as Editable).spdfItalic && "bg-brand-600")}
+                onClick={() => updateSelected({ spdfItalic: !(selected as Editable).spdfItalic, ...(selected instanceof Textbox ? { fontStyle: !(selected as Editable).spdfItalic ? "italic" : "normal" } : {}) })}>
                 <Italic className="h-4 w-4" />
               </button>
             </>
@@ -768,10 +769,10 @@ export function Editor() {
           <label className="flex flex-col gap-1 text-xs text-ink-300">
             Color
             <input type="color" className="h-8 w-12 cursor-pointer rounded" value={
-              selected.spdfType === "source" ? selected.spdfColor || "#000000" :
+              (selected as Editable).spdfType === "source" ? (selected as Editable).spdfColor || "#000000" :
               typeof selected.fill === "string" && /^#[0-9a-f]{6}$/i.test(selected.fill) ? selected.fill : "#14b8a6"
             } onChange={(e) => updateSelected({
-              ...(selected.spdfType === "source" ? { spdfColor: e.target.value } : { fill: e.target.value }),
+              ...((selected as Editable).spdfType === "source" ? { spdfColor: e.target.value } : { fill: e.target.value }),
               ...(selected instanceof Textbox ? { fill: e.target.value } : {}),
             })} />
           </label>
