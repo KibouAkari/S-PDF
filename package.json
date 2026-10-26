@@ -20,8 +20,8 @@
     "dev:api": "npm run dev -w apps/api",
     "dev:web": "npm run dev -w apps/web",
     "build": "npm run build -w apps/api && npm run build -w apps/web",
-    "converter:install": "python -m venv services/converter/.venv && services\\converter\\.venv\\Scripts\\pip install -r services/converter/requirements.txt",
-    "converter:dev": "services\\converter\\.venv\\Scripts\\uvicorn main:app --reload --port 8001 --app-dir services/converter"
+    "converter:install": "python -m pip install -r services/converter/requirements.txt",
+    "converter:dev": "python -m uvicorn main:app --reload --port 8001 --app-dir services/converter"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
