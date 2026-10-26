@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1420, height: 920 } });
 const diagnostics = [];
+let editGeometry = [];
 
 try {
   const browserErrors = [];
@@ -11,6 +12,21 @@ try {
   page.on("console", (message) => { if (message.type() === "error") diagnostics.push("CONSOLE: " + message.text()); });
   page.on("response", (response) => { if (response.url().includes("/api/")) diagnostics.push("API: " + response.status() + " " + response.url()); });
   page.on("requestfailed", (request) => diagnostics.push("FAILED: " + request.url() + " " + request.failure()?.errorText));
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/pdf/edit")) return;
+    const body = request.postData() || "";
+    const marker = 'name="objects"\\r\\n\\r\\n';
+    const at = body.indexOf(marker);
+    if (at < 0) return;
+    try {
+      const serialized = body.slice(at + marker.length).split("\\r\\n--")[0];
+      editGeometry = JSON.parse(serialized).map((o) => ({
+        type: o.type, action: o.action, page: o.page,
+        x: o.x, y: o.y, width: o.width, height: o.height, size: o.size,
+        textLength: o.text?.length,
+      }));
+    } catch { /* keep test output free from PDF file data */ }
+  });
   await page.goto("http://127.0.0.1:5173/tools/editor", { waitUntil: "networkidle" });
   const input = page.locator('input[type="file"]').first();
   await input.setInputFiles("/tmp/editor-fixture.pdf");
@@ -65,7 +81,13 @@ try {
   assert.equal(await field.inputValue(), "Test document");
   await field.fill("Edited in browser");
   const downloadEvent = page.waitForEvent("download", { timeout: 30000 });
+  const editResponse = page.waitForResponse((res) => res.url().includes("/api/pdf/edit"), { timeout: 30000 });
   await page.getByRole("button", { name: /Save & Download/i }).click();
+  const response = await editResponse;
+  if (!response.ok()) {
+    console.error("EDIT GEOMETRY:", JSON.stringify(editGeometry));
+    throw new Error(`PDF export returned HTTP ${response.status()}`);
+  }
   const download = await downloadEvent;
   await download.saveAs("/tmp/editor-export.pdf");
 
