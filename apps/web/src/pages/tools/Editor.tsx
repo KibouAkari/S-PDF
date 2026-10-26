@@ -218,9 +218,17 @@ async function previewNativeChange(canvas: Canvas, object: Editable): Promise<Ed
   }
   if (object.spdfKind !== "text" || object instanceof Textbox) return object;
   const size = (object.spdfSize || 12) * (object.scaleY || 1);
+  // Imported PDF spans often fit their original words extremely tightly.
+  // Allow enough horizontal space for replacement text instead of silently
+  // wrapping and producing an export that cannot fit into its selected box.
+  const suggestedWidth = Math.max(
+    240,
+    object.getScaledWidth(),
+    (object.spdfText || "").length * size * RENDER_SCALE * 0.72 + 24
+  );
   const replacement = new Textbox(object.spdfText || "", {
     left: object.left, top: object.top,
-    width: Math.min(Math.max(200, object.getScaledWidth()), Math.max(1, canvas.getWidth() - (object.left ?? 0))),
+    width: Math.max(1, Math.min(suggestedWidth, canvas.getWidth() - (object.left ?? 0))),
     fontSize: size * RENDER_SCALE,
     fill: object.spdfColor || "#000000",
     backgroundColor: "#ffffff",
