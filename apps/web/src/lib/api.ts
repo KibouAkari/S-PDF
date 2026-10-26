@@ -87,7 +87,7 @@ export async function pdfInfo(file: File) {
 
 export interface NativePdfElement {
   id: string;
-  type: "text" | "image";
+  type: "text" | "image" | "shape";
   rect: [number, number, number, number];
   text?: string;
   fontSize?: number;
