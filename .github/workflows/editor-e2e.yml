@@ -5,6 +5,8 @@ on:
     paths:
       - "apps/web/src/pages/tools/Editor.tsx"
       - "apps/web/src/lib/**"
+      - "apps/web/vite.config.ts"
+      - "apps/web/src/main.tsx"
       - "apps/api/src/routes/edit.ts"
       - "services/converter/**"
       - "tests/e2e/**"
