@@ -345,7 +345,17 @@ export function Editor() {
       if (!historyRestoringRef.current && canvasPageRef.current === prevPage) {
         pageObjectsRef.current.set(prevPage, serialize(canvas));
       }
-      const { canvas: rendered } = await renderPdfPage(file, pageIndex, RENDER_SCALE);
+      let rendered: HTMLCanvasElement;
+      try {
+        ({ canvas: rendered } = await renderPdfPage(file, pageIndex, RENDER_SCALE));
+      } catch (error) {
+        if (request === loadingPageRef.current) {
+          setIsPageRendering(false);
+          setStatus("error");
+          setMessage(`Could not render this PDF page: ${extractErrorMessage(error)}`);
+        }
+        return;
+      }
       if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
       setPagePixels({ width: rendered.width, height: rendered.height });
       // Keep the PDF as a separate visible layer. Fabric draws ONLY editable
@@ -354,7 +364,7 @@ export function Editor() {
       const view = viewportRef.current;
       if (view && pageIndex === 0) {
         const fit = Math.min((view.clientWidth - 48) / rendered.width, (view.clientHeight - 48) / rendered.height);
-        setZoom(Math.max(0.2, Math.min(2.5, fit)));
+        setZoom(Math.max(0.05, Math.min(2.5, fit)));
       }
       canvas.setDimensions({ width: rendered.width, height: rendered.height });
       canvas.backgroundImage = undefined;
@@ -391,9 +401,15 @@ export function Editor() {
           }
           pageObjectsRef.current.set(pageIndex, serialize(canvas));
           pageLoadedRef.current.add(pageIndex);
+          const looksScanned = !elements.some((element) => element.type === "text") &&
+            elements.some((element) => element.type === "image" &&
+              (element.rect[2] - element.rect[0]) * (element.rect[3] - element.rect[1]) >
+              (rendered.width / RENDER_SCALE) * (rendered.height / RENDER_SCALE) * 0.65);
           setNativeWarning(elements.length > 600
-            ? "Only the first 600 existing elements can be selected on this page."
-            : undefined);
+            ? "This page contains more than 600 native objects. Only the first 600 can be selected."
+            : looksScanned
+              ? "This page appears to be scanned. The whole image can be moved, but editing its text requires OCR."
+              : undefined);
         } catch {
           if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
           setNativeWarning("Existing PDF content could not be inspected. Start the Python converter to edit existing text or images.");
@@ -403,9 +419,14 @@ export function Editor() {
       const saved = pageObjectsRef.current.get(pageIndex) ?? [];
       canvas.remove(...canvas.getObjects());
       for (const data of saved) {
-        const obj = await loadObjectByType(data);
-        if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
-        if (obj) canvas.add(obj);
+        try {
+          const obj = await loadObjectByType(data);
+          if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
+          if (obj) canvas.add(obj);
+        } catch {
+          // An invalid editing object must not hide the PDF itself.
+          setNativeWarning("Some editable objects could not be loaded. The original PDF page is still displayed.");
+        }
       }
 
       canvas.requestRenderAll();
@@ -538,7 +559,7 @@ export function Editor() {
     if (!viewport || !pagePixels.width || !pagePixels.height) return;
     const availableWidth = Math.max(200, viewport.clientWidth - 48);
     const availableHeight = Math.max(200, viewport.clientHeight - 48);
-    setZoom(Math.max(0.2, Math.min(2.5, availableWidth / pagePixels.width, availableHeight / pagePixels.height)));
+    setZoom(Math.max(0.05, Math.min(2.5, availableWidth / pagePixels.width, availableHeight / pagePixels.height)));
     viewport.scrollTo({ top: 0, left: 0 });
   }
 
