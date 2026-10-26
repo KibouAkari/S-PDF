@@ -2,7 +2,7 @@
 
 ## Current implementation
 
-S-PDF can inspect selectable **native text spans** and **embedded raster image blocks** using PyMuPDF. On a page, click an existing element to select it, drag the selection to reposition it, and use the resize handles. Double-click a native text selection to turn it into an editable text box. The properties bar changes text, family, size, weight, italic style and color.
+S-PDF can inspect selectable **native text spans** and **embedded raster image blocks and basic vector paths (lines/rectangles)** using PyMuPDF. On a page, click an existing element to select it, drag the selection to reposition it, and use the resize handles. Double-click a native text selection to turn it into an editable text box. The properties bar changes text, family, size, weight, italic style and color.
 
 When exporting, a changed source element is removed using PDF redaction and then reconstructed at its target location. This is a **real change to the exported PDF**, not simply an opaque white rectangle over existing text. Native deletion removes content from text extraction for standard text-based PDFs.
 
@@ -20,7 +20,7 @@ When exporting, a changed source element is removed using PDF redaction and then
 
 PDF is a final-format document, not a Word document. Text is often split into spans, sometimes individual glyphs, and original fonts may not be distributable or reconstructible. The current native engine reflows selected text with a limited set of built-in PDF fonts: Helvetica, Times and Courier. Text that does not fit a selected box produces an error rather than silently disappearing.
 
-Redaction of a text span can remove other touching glyphs. Deleting an image can also affect overlapping content. Images with special transparency, clipping masks, or repeated references may not reproduce pixel-for-pixel after an edit. PDFs with rotations, nested transformations, form XObjects and unusual crop boxes need additional regression fixtures. Not all vector shapes are selectable as source objects: **existing vector graphics are not yet editable**.
+Redaction of a text span can remove other touching glyphs. Deleting an image can also affect overlapping content. Images with special transparency, clipping masks, or repeated references may not reproduce pixel-for-pixel after an edit. PDFs with rotations, nested transformations, form XObjects and unusual crop boxes need additional regression fixtures. Only uncomplicated native line and rectangle paths are selectable experimentally. Bezier curves, clipping masks, and complex vector graphics are **not** currently supported, and nearby artwork may be affected by path removal.
 
 **Scans:** a page photographed or scanned as one image is selectable as an image, but the letters inside are pixels. OCR plus layout reconstruction is planned and is not available in this version.
 
@@ -34,4 +34,4 @@ The Python converter must be running for **native content inspection and modific
 
 ## What the editor is not yet
 
-S-PDF does not currently provide lossless Acrobat-style rewriting of arbitrary vector drawings, fonts, complex page content, OCR text, PDF form fields or structured tables. These are roadmap items, **not supported feature claims**.
+S-PDF does not currently provide lossless Acrobat-style rewriting of arbitrary or complex vector drawings, fonts, complex page content, OCR text, PDF form fields or structured tables. These are roadmap items, **not supported feature claims**.
