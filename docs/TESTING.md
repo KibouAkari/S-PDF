@@ -5,7 +5,8 @@
 The GitHub Actions CI workflow performs:
 
 - Node and web TypeScript builds.
-- Python converter imports.
+- Python converter imports and Python native editing/HTTP contract tests, including source text, raster images and vector rectangles.
+- A dedicated Chromium browser smoke workflow that opens a generated PDF, selects original text, changes and downloads it, then reopens the PDF with PyMuPDF to verify content replacement.
 - Native editing tests with generated PDFs. They verify that text is discovered, replaced, moved, and removed from PDF extraction; source IDs are validated; embedded images can be discovered.
 
 Run the native tests locally:
@@ -36,7 +37,7 @@ Before merging a major editor update, test in Chromium and Firefox with the Pyth
 - Test regular text PDFs, scanned PDFs, rotated pages, complex fonts and vector-heavy documents.
 - Verify error messages for invalid PDFs, fonts that cannot encode content and text that does not fit.
 
-**Important:** Automated build/unit tests do not prove browser interaction correctness or PDF visual fidelity. If these tests are not executed, do not call the editor production-ready.
+**Important:** A successful one-case Chromium text-edit smoke test does not prove every editor interaction or visual fidelity. If these tests are not executed, do not call the editor production-ready.
 
 ## Security checks before deployment
 
