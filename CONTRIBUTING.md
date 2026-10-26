@@ -16,13 +16,29 @@ See [README.md](README.md) for the full stack overview and local setup steps.
 
 ## Development setup
 
-```powershell
-npm install --workspaces
-npm run converter:install
-Copy-Item apps/api/.env.example apps/api/.env
+Use a Python virtual environment, then:
 
-npm run converter:dev   # terminal 1
-npm run dev              # terminal 2 (API + web)
+```bash
+npm install --workspaces
+python -m venv .venv
+source .venv/bin/activate
+npm run converter:install
+cp apps/api/.env.example apps/api/.env
+npm run converter:dev
+```
+
+On Windows, use `.venv\Scripts\Activate.ps1` and `Copy-Item` for the environment file. Start `npm run dev` in a second terminal.
+
+## Editor architecture and testing
+
+Native source edits are handled by `services/converter/editor_native.py` through the Python converter API, including when the web app uses the Node API. Overlays remain supported by both PDF engines. Native content extraction and destructive changes are **not** available from `pdf-lib` alone.
+
+Before opening a PR that changes PDF editing, run both builds, Python unit/HTTP contract tests, and Chromium browser workflow. Add fixture PDFs for every corrected regression. Include screenshots only when they accurately reflect the current UI. Read [Native Editing](docs/NATIVE_EDITING.md), [Testing](docs/TESTING.md), and [Licensing](docs/LICENSING.md).
+
+### Python tests
+
+```bash
+PYTHONPATH=services/converter python -m unittest discover -s services/converter/tests -v
 ```
 
 ## Before opening a pull request
