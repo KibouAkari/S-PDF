@@ -40,16 +40,17 @@ processing sensitive documents.
 - [Architecture and deployment modes](docs/ARCHITECTURE.md)
 - [PDF editor capabilities, limitations and roadmap](docs/EDITOR.md)
 - [Quality checks and release criteria](docs/QUALITY.md)
+- [Native editing guide and limitations](docs/NATIVE_EDITING.md)
+- [Licensing and third-party obligations](docs/LICENSING.md)
+- [Automated and manual testing](docs/TESTING.md)
 
-**Editor status:** The current editor is an overlay editor, not yet a replacement
-for Acrobat's direct content editing. We intentionally distinguish shipped
-features from planned capabilities.
+**Editor status:** Native editing is experimental: simple text spans and embedded raster images can be modified in exported PDFs, but complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
 
 ## Features
 
 - **Merge & Organize** - combine multiple PDFs, drag pages into any order, rotate or delete pages, export as one file.
 - **Split** - extract page ranges into separate PDFs (returned as a ZIP).
-- **Annotate PDF (experimental)** - add and move new text, images, shapes and transparent highlights, then flatten to a new PDF. Editing existing PDF text or images is not implemented yet; visual white boxes are not secure redaction.
+- **Edit PDF (experimental)** - select and change existing PDF text spans and embedded images, move and resize selections, and add text, images, shapes or freehand highlights. Native changes use the Python converter and may not preserve complex formatting. Scanned text requires OCR, which is not yet included.
 - **PDF ⇄ Word** - `pdf2docx` for PDF→Word; LibreOffice headless for Word→PDF.
 - **PDF ⇄ Images** - rasterize pages to PNG at a chosen DPI, or build a PDF from a set of images.
 - **Watermark** - centered or tiled text watermark with color/opacity/rotation controls.
@@ -163,3 +164,8 @@ opening a public issue.
 ## License
 
 [MIT](LICENSE) - do whatever you like with it, attribution appreciated.
+
+
+## Open-source license notice
+
+S-PDF's source is distributed under the repository [LICENSE](LICENSE). The Python PDF engine PyMuPDF/MuPDF is dual-licensed under AGPLv3 or a commercial license; its terms also apply to deployments and distributions. See [licensing guidance](docs/LICENSING.md) before shipping a public service.
