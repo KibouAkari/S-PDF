@@ -74,7 +74,9 @@ async function loadObjectByType(data: Record<string, unknown>): Promise<FabricOb
     return new Textbox(String(data.text ?? ""), data);
   }
   if (data.spdfType === "rect" || data.spdfType === "highlight") {
-    return new Rect(data);
+    const rect = new Rect(data);
+    if (data.spdfType === "highlight") rect.setControlsVisibility({ mtr: false });
+    return rect;
   }
   if (data.spdfType === "image" && typeof data.spdfSrc === "string") {
     const img = await FabricImage.fromURL(data.spdfSrc);
@@ -198,6 +200,7 @@ export function Editor() {
     if (!canvas) return;
     const rect = new Rect({ left: 60, top: 60, width: 190, height: 22, fill: "#facc15", opacity: 0.32, strokeWidth: 0 });
     (rect as FabricObject & { spdfType?: string }).spdfType = "highlight";
+    rect.setControlsVisibility({ mtr: false });
     canvas.add(rect);
     canvas.setActiveObject(rect);
     canvas.requestRenderAll();
