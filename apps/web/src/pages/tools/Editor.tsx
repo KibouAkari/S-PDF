@@ -1,16 +1,55 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Canvas, Textbox, Rect, FabricImage, type FabricObject } from "fabric";
-import { Type, Square, Highlighter, ImagePlus, Trash2, Download, ZoomIn, ZoomOut, Maximize2, Hand, MousePointer2 } from "lucide-react";
+import { Canvas, Textbox, Rect, Ellipse, Line, PencilBrush, FabricImage, type FabricObject } from "fabric";
+import { Type, Square, Highlighter, ImagePlus, Trash2, Download, ZoomIn, ZoomOut, Maximize2, Hand, MousePointer2, Circle, Minus, PenLine, Undo2, Redo2, Bold, Italic } from "lucide-react";
 import { Dropzone } from "../../components/Dropzone";
 import { StatusBanner } from "../../components/StatusBanner";
 import { ToolHeader } from "../../components/ToolHeader";
 import { Button } from "../../components/ui/Button";
 import { Card } from "../../components/ui/Card";
-import { pdfInfo, editPdf, type EditObject } from "../../lib/api";
+import { pdfInfo, editPdf, inspectPdfContent, type NativePdfElement, type EditObject } from "../../lib/api";
 import { renderPdfPage, renderPdfThumbnails } from "../../lib/pdfRender";
 import { downloadBlob, extractErrorMessage, cn } from "../../lib/utils";
 
 const RENDER_SCALE = 1.5;
+const SERIALIZED_PROPS = ["spdfType", "spdfSrc", "spdfId", "spdfKind", "spdfOriginalRect", "spdfText", "spdfFont", "spdfSize", "spdfColor", "spdfBold", "spdfItalic", "spdfChanged", "spdfAction"] as const;
+type Editable = FabricObject & {
+  spdfType?: string;
+  spdfSrc?: string;
+  spdfId?: string;
+  spdfKind?: "text" | "image";
+  spdfOriginalRect?: [number, number, number, number];
+  spdfText?: string;
+  spdfFont?: "helvetica" | "times" | "courier";
+  spdfSize?: number;
+  spdfColor?: string;
+  spdfBold?: boolean;
+  spdfItalic?: boolean;
+  spdfChanged?: boolean;
+  spdfAction?: "replace" | "move" | "delete";
+};
+function serialize(canvas: Canvas) {
+  return canvas.getObjects().map((o) => o.toObject([...SERIALIZED_PROPS]) as Record<string, unknown>);
+}
+function nativeObject(item: NativePdfElement): Editable {
+  const [x0, y0, x1, y1] = item.rect;
+  const rectangle = new Rect({
+    left: x0 * RENDER_SCALE, top: y0 * RENDER_SCALE,
+    width: (x1 - x0) * RENDER_SCALE, height: (y1 - y0) * RENDER_SCALE,
+    fill: "rgba(20,184,166,0.005)", strokeWidth: 0,
+    lockRotation: true,
+  }) as Editable;
+  rectangle.spdfType = "source";
+  rectangle.spdfId = item.id;
+  rectangle.spdfKind = item.type;
+  rectangle.spdfOriginalRect = item.rect;
+  rectangle.spdfText = item.text || "";
+  rectangle.spdfSize = item.fontSize || 12;
+  rectangle.spdfColor = item.color || "#000000";
+  rectangle.spdfFont = "helvetica";
+  rectangle.spdfChanged = false;
+  return rectangle;
+}
+
 
 /** Extracts our lightweight EditObject description from a fabric object's on-canvas geometry. */
 function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: number): EditObject | null {
@@ -27,6 +66,25 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
 
   const kind = (obj as FabricObject & { spdfType?: string }).spdfType;
 
+  if (kind === "source") {
+    const native = obj as Editable;
+    if (!native.spdfChanged || !native.spdfId || !native.spdfOriginalRect) return null;
+    return {
+      type: "source", page, elementId: native.spdfId,
+      action: native.spdfAction || "move",
+      x: left / RENDER_SCALE, y: top / RENDER_SCALE,
+      width: width / RENDER_SCALE, height: height / RENDER_SCALE,
+      text: native instanceof Textbox ? native.text : native.spdfText,
+      size: native.spdfSize || 12,
+      color: native.spdfColor || "#000000",
+      font: native.spdfFont || "helvetica",
+      bold: native.spdfBold || false, italic: native.spdfItalic || false,
+    };
+  }
+  if (kind === "shape" || kind === "draw") {
+    return { type: "image", page, x, y, width: width / RENDER_SCALE,
+      height: height / RENDER_SCALE, dataUrl: obj.toDataURL({ format: "png" }) };
+  }
   if (kind === "text") {
     const tb = obj as Textbox;
     return {
@@ -70,6 +128,20 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
 }
 
 async function loadObjectByType(data: Record<string, unknown>): Promise<FabricObject | null> {
+  if (data.spdfType === "source") {
+    const rect = new Rect(data);
+    return rect;
+  }
+  if (data.spdfType === "shape") {
+    if (data.type === "Ellipse") return new Ellipse(data);
+    if (data.type === "Line") return new Line([0, 0, Number(data.width ?? 100), Number(data.height ?? 1)], data);
+    return new Rect(data);
+  }
+  if (data.spdfType === "draw") {
+    // Fabric paths are reconstructed from serialized path commands.
+    const { Path } = await import("fabric");
+    return new Path(data.path as string, data);
+  }
   if (data.spdfType === "text") {
     return new Textbox(String(data.text ?? ""), data);
   }
@@ -97,9 +169,65 @@ export function Editor() {
   const [zoom, setZoom] = useState(1);
   const [pagePixels, setPagePixels] = useState({ width: 0, height: 0 });
   const [panMode, setPanMode] = useState(false);
+  const [drawingMode, setDrawingMode] = useState(false);
+  const [selected, setSelected] = useState<Editable | null>(null);
+  const [selectionVersion, setSelectionVersion] = useState(0);
+  const [nativeWarning, setNativeWarning] = useState<string>();
+  const historyRef = useRef<Map<number, string[]>>(new Map());
+  const historyIndexRef = useRef<Map<number, number>>(new Map());
+  const clipboardRef = useRef<Record<string, unknown> | null>(null);
+  const pageLoadedRef = useRef<Set<number>>(new Set());
   const viewportRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const loadingPageRef = useRef(0);
+  const historyRestoringRef = useRef(false);
+
+  function recordHistory() {
+    if (historyRestoringRef.current) return;
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const page = currentPageRef.current;
+    const state = JSON.stringify(serialize(canvas));
+    const items = historyRef.current.get(page) ?? [];
+    const index = historyIndexRef.current.get(page) ?? -1;
+    if (items[index] === state) return;
+    const next = [...items.slice(0, index + 1), state].slice(-40);
+    historyRef.current.set(page, next);
+    historyIndexRef.current.set(page, next.length - 1);
+  }
+  async function stepHistory(direction: -1 | 1) {
+    const page = currentPageRef.current;
+    const list = historyRef.current.get(page) ?? [];
+    const index = (historyIndexRef.current.get(page) ?? -1) + direction;
+    if (index < 0 || index >= list.length || !fabricRef.current) return;
+    historyRestoringRef.current = true;
+    const canvas = fabricRef.current;
+    const saved = JSON.parse(list[index]) as Record<string, unknown>[];
+    canvas.discardActiveObject();
+    canvas.remove(...canvas.getObjects());
+    for (const item of saved) {
+      const object = await loadObjectByType(item);
+      if (object) canvas.add(object);
+    }
+    canvas.requestRenderAll();
+    pageObjectsRef.current.set(page, saved);
+    historyIndexRef.current.set(page, index);
+    setSelected(null);
+    historyRestoringRef.current = false;
+  }
+  function updateSelected(patch: Record<string, unknown>) {
+    const canvas = fabricRef.current;
+    if (!canvas || !selected) return;
+    selected.set(patch);
+    if (selected.spdfType === "source") {
+      selected.spdfChanged = true;
+      selected.spdfAction = "replace";
+    }
+    selected.setCoords();
+    canvas.requestRenderAll();
+    setSelectionVersion((value) => value + 1);
+    recordHistory();
+  }
 
   const fabricRef = useRef<Canvas | null>(null);
   const pageObjectsRef = useRef<Map<number, Record<string, unknown>[]>>(new Map());
