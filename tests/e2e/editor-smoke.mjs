@@ -3,19 +3,23 @@ import { chromium } from "playwright";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1420, height: 920 } });
+const diagnostics = [];
 
 try {
   const browserErrors = [];
-  page.on("pageerror", (error) => browserErrors.push(error.message));
+  page.on("pageerror", (error) => { browserErrors.push(error.message); diagnostics.push("JS ERROR: " + error.message); });
+  page.on("console", (message) => { if (message.type() === "error") diagnostics.push("CONSOLE: " + message.text()); });
+  page.on("response", (response) => { if (response.url().includes("/api/")) diagnostics.push("API: " + response.status() + " " + response.url()); });
+  page.on("requestfailed", (request) => diagnostics.push("FAILED: " + request.url() + " " + request.failure()?.errorText));
   await page.goto("http://127.0.0.1:5173/tools/editor", { waitUntil: "networkidle" });
   const input = page.locator('input[type="file"]').first();
-  const inspection = page.waitForResponse((res) => res.url().includes("/api/pdf/content") && res.status() === 200, { timeout: 30000 });
   await input.setInputFiles("/tmp/editor-fixture.pdf");
-  await inspection;
 
   await page.getByRole("button", { name: /Fit page/i }).waitFor({ timeout: 30000 });
   await page.locator("canvas.upper-canvas").waitFor();
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(1600);
+  console.log("DIAGNOSTICS AFTER UPLOAD", diagnostics.join("\\n"));
+  assert.ok(diagnostics.some((line) => line.includes("API: 200") && line.includes("/api/pdf/content")), "Native content inspection API was not successful");
 
   const upper = page.locator("canvas.upper-canvas");
   const rect = await upper.boundingBox();
@@ -36,6 +40,8 @@ try {
   assert.equal(browserErrors.length, 0, browserErrors.join("\n"));
   console.log("BROWSER EDIT SMOKE PASSED");
 } catch (error) {
+  console.error("EDITOR DIAGNOSTICS:", diagnostics.join("\\n"));
+  console.error("EDITOR BODY:", (await page.locator("body").innerText().catch(() => "" )).slice(0, 5000));
   await page.screenshot({ path: "/tmp/editor-failure.png", fullPage: true }).catch(() => {});
   console.error(error);
   throw error;
