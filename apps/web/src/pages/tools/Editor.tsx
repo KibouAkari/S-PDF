@@ -386,13 +386,14 @@ export function Editor() {
           <div
             ref={viewportRef}
             className={cn("relative h-[min(74vh,850px)] min-h-[420px] w-full overflow-auto p-4", panMode ? "cursor-grab active:cursor-grabbing" : "")}
+            style={{ touchAction: panMode ? "none" : "auto" }}
             onPointerDown={startPan}
             onPointerMove={movePan}
             onPointerUp={stopPan}
             onPointerCancel={stopPan}
           >
-            <div className="flex min-h-full min-w-full items-start justify-center">
-              <div className="relative shrink-0" style={{ width: pagePixels.width * zoom, height: pagePixels.height * zoom }}>
+            <div className="flex min-h-full min-w-full w-max items-start justify-center">
+              <div className="relative shrink-0 overflow-hidden" style={{ width: pagePixels.width * zoom, height: pagePixels.height * zoom }}>
                 <div style={{ width: pagePixels.width, height: pagePixels.height, transform: `scale(${zoom})`, transformOrigin: "top left", pointerEvents: panMode ? "none" : "auto" }}>
                   <canvas ref={attachCanvas} className="rounded-sm shadow-lg" />
                 </div>
