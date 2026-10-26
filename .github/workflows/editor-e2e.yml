@@ -1,0 +1,74 @@
+name: Editor browser smoke test
+
+on:
+  pull_request:
+    paths:
+      - "apps/web/src/pages/tools/Editor.tsx"
+      - "apps/web/src/lib/api.ts"
+      - "apps/api/src/routes/edit.ts"
+      - "services/converter/**"
+      - "tests/e2e/**"
+      - ".github/workflows/editor-e2e.yml"
+
+jobs:
+  editor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: npm install --workspaces
+      - run: npm install --no-save --no-package-lock playwright@1.55.0
+      - run: npx playwright install --with-deps chromium
+      - run: pip install -r services/converter/requirements.txt
+      - run: npm run build -w apps/api
+      - name: Edit and export a real PDF in Chromium
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import fitz
+          doc = fitz.open()
+          page = doc.new_page(width=420, height=600)
+          page.insert_text((70, 110), "Test document", fontsize=14)
+          doc.save("/tmp/editor-fixture.pdf")
+          doc.close()
+          PY
+          python -m uvicorn main:app --app-dir services/converter --host 127.0.0.1 --port 8001 > /tmp/converter.log 2>&1 &
+          npm run start -w apps/api > /tmp/api.log 2>&1 &
+          npm run dev -w apps/web -- --host 127.0.0.1 > /tmp/web.log 2>&1 &
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:8001/api/health >/dev/null &&
+               curl -fsS http://127.0.0.1:4000/health >/dev/null &&
+               curl -fsS http://127.0.0.1:5173/tools/editor >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          node tests/e2e/editor-smoke.mjs
+          python - <<'PY'
+          import fitz
+          doc = fitz.open("/tmp/editor-export.pdf")
+          content = doc[0].get_text()
+          assert "Edited in browser" in content, content
+          assert "Test document" not in content, content
+          doc.close()
+          print("EXPORTED PDF VALIDATED")
+          PY
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: editor-smoke-diagnostics
+          path: |
+            /tmp/editor-failure.png
+            /tmp/converter.log
+            /tmp/api.log
+            /tmp/web.log
+          if-no-files-found: ignore
