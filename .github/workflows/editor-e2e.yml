@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - "apps/web/src/pages/tools/Editor.tsx"
-      - "apps/web/src/lib/api.ts"
+      - "apps/web/src/lib/**"
       - "apps/api/src/routes/edit.ts"
       - "services/converter/**"
       - "tests/e2e/**"
