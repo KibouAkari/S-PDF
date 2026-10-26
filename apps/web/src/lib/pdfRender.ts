@@ -1,5 +1,5 @@
 import * as pdfjsLib from "pdfjs-dist";
-import workerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
+import workerUrl from "./pdfWorker.ts?worker&url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
