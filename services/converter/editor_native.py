@@ -251,9 +251,19 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
             # PDF fonts and line breaks may differ from the source.
             # Fail rather than silently export missing replacement content.
             try:
-                remaining = page.insert_textbox(target + (0, 0, 0, max(4, size * 0.5)),
-                                                content, fontsize=size, fontname=font,
-                                                color=color, overlay=True)
+                # Fabric textbox geometry can be tighter than MuPDF's font metrics.
+                # Give the typesetter room for one complete line without
+                # altering the original redaction/selection coordinates.
+                # Remaining text is never silently discarded.
+                box_bottom = min(
+                    page.rect.y1,
+                    max(target.y1 + size * 0.5, target.y0 + size * 2.1),
+                )
+                text_box = fitz.Rect(target.x0, target.y0, target.x1, box_bottom)
+                remaining = page.insert_textbox(
+                    text_box, content, fontsize=size, fontname=font,
+                    color=color, overlay=True,
+                )
             except Exception as exc:
                 raise HTTPException(400, "Replacement text contains unsupported glyphs") from exc
             if remaining < 0:
