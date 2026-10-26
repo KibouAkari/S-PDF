@@ -6,7 +6,7 @@ import { asyncHandler, HttpError } from "../lib/http.js";
 export const editRouter = Router();
 
 type EditObject =
-  | { type: "rect"; page: number; x: number; y: number; width: number; height: number; color?: string }
+  | { type: "rect" | "highlight"; page: number; x: number; y: number; width: number; height: number; color?: string }
   | {
       type: "text";
       page: number;
@@ -74,9 +74,9 @@ editRouter.post(
       }
       const page = pages[obj.page];
 
-      if (obj.type === "rect") {
+      if (obj.type === "rect" || obj.type === "highlight") {
         const [r, g, b] = hexToRgb(obj.color ?? "#FFFFFF");
-        page.drawRectangle({ x: obj.x, y: obj.y, width: obj.width, height: obj.height, color: rgb(r, g, b) });
+        page.drawRectangle({ x: obj.x, y: obj.y, width: obj.width, height: obj.height, color: rgb(r, g, b), opacity: obj.type === "highlight" ? 0.32 : 1 });
       } else if (obj.type === "text") {
         const family = obj.font ?? "helvetica";
         const variant = obj.bold && obj.italic ? "boldItalic" : obj.bold ? "bold" : obj.italic ? "italic" : "regular";

@@ -291,11 +291,11 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
         obj_type = obj.get("type")
 
         # Incoming x/y use PDF's bottom-left origin (matching /api/pdf/info); flip to fitz's top-left space.
-        if obj_type == "rect":
+        if obj_type in ("rect", "highlight"):
             x, y, w, h = obj.get("x", 0), obj.get("y", 0), obj.get("width", 0), obj.get("height", 0)
             top_y = page_height - (y + h)
             fill = _hex_to_rgb(obj.get("color", "#ffffff"))
-            page.draw_rect(fitz.Rect(x, top_y, x + w, top_y + h), color=None, fill=fill)
+            page.draw_rect(fitz.Rect(x, top_y, x + w, top_y + h), color=None, fill=fill, fill_opacity=0.32 if obj_type == "highlight" else 1)
         elif obj_type == "text":
             x, y = obj.get("x", 0), obj.get("y", 0)
             font = FONT_MAP[(bool(obj.get("bold")), bool(obj.get("italic")))]
