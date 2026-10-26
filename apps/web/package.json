@@ -18,7 +18,7 @@
     "clsx": "^2.1.1",
     "fabric": "^7.4.0",
     "lucide-react": "^1.45.0",
-    "pdfjs-dist": "^6.3.289",
+    "pdfjs-dist": "^6.4.299",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.3",
