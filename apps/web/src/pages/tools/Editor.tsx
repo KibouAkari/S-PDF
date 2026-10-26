@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Canvas, Textbox, Rect, FabricImage, type FabricObject } from "fabric";
-import { Type, Square, ImagePlus, Trash2, Download } from "lucide-react";
+import { Type, Square, Highlighter, ImagePlus, Trash2, Download } from "lucide-react";
 import { Dropzone } from "../../components/Dropzone";
 import { StatusBanner } from "../../components/StatusBanner";
 import { ToolHeader } from "../../components/ToolHeader";
@@ -42,9 +42,9 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
       italic: tb.fontStyle === "italic",
     };
   }
-  if (kind === "rect") {
+  if (kind === "rect" || kind === "highlight") {
     return {
-      type: "rect",
+      type: kind,
       page,
       x,
       y,
@@ -73,7 +73,7 @@ async function loadObjectByType(data: Record<string, unknown>): Promise<FabricOb
   if (data.spdfType === "text") {
     return new Textbox(String(data.text ?? ""), data);
   }
-  if (data.spdfType === "rect") {
+  if (data.spdfType === "rect" || data.spdfType === "highlight") {
     return new Rect(data);
   }
   if (data.spdfType === "image" && typeof data.spdfSrc === "string") {
@@ -193,6 +193,16 @@ export function Editor() {
     canvas.setActiveObject(rect);
   }
 
+  function addHighlight() {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const rect = new Rect({ left: 60, top: 60, width: 190, height: 22, fill: "#facc15", opacity: 0.32, strokeWidth: 0 });
+    (rect as FabricObject & { spdfType?: string }).spdfType = "highlight";
+    canvas.add(rect);
+    canvas.setActiveObject(rect);
+    canvas.requestRenderAll();
+  }
+
   async function addImage(files: File[]) {
     const canvas = fabricRef.current;
     const f = files[0];
@@ -252,7 +262,7 @@ export function Editor() {
   if (!file) {
     return (
       <div>
-        <ToolHeader title="Edit PDF" description="Add and move text, images, and shapes directly on the page." />
+        <ToolHeader title="Edit PDF" description="Add and position annotations over PDF pages. Existing document text is not directly editable yet." />
         <Card className="p-6">
           <Dropzone accept="application/pdf" onFiles={(files) => handleFile(files[0])} hint="Choose a PDF to start editing" />
         </Card>
@@ -263,7 +273,7 @@ export function Editor() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <ToolHeader title="Edit PDF" description="Add text, images and shapes, then export your edited PDF." />
+        <ToolHeader title="Edit PDF" description="Add and move text, images, highlights and shapes. Existing text remains part of the original PDF." />
         <Button onClick={handleSave} disabled={status === "loading"}>
           <Download className="h-4 w-4" /> Save & Download
         </Button>
@@ -271,7 +281,8 @@ export function Editor() {
 
       <div className="mb-4 flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={addText}><Type className="h-4 w-4" /> Add text</Button>
-        <Button variant="secondary" size="sm" onClick={addRect}><Square className="h-4 w-4" /> Add box / redact</Button>
+        <Button variant="secondary" size="sm" onClick={addHighlight}><Highlighter className="h-4 w-4" /> Highlight</Button>
+        <Button variant="secondary" size="sm" onClick={addRect}><Square className="h-4 w-4" /> Add white box</Button>
         <label>
           <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => e.target.files && addImage(Array.from(e.target.files))} />
           <span className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-ink-50 hover:bg-ink-700">
