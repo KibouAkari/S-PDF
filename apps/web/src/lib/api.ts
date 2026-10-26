@@ -86,7 +86,7 @@ export async function pdfInfo(file: File) {
 }
 
 export type EditObject =
-  | { type: "rect"; page: number; x: number; y: number; width: number; height: number; color?: string }
+  | { type: "rect" | "highlight"; page: number; x: number; y: number; width: number; height: number; color?: string }
   | {
       type: "text";
       page: number;
