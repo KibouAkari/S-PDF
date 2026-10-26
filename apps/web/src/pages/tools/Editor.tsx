@@ -128,38 +128,41 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
 }
 
 async function loadObjectByType(data: Record<string, unknown>): Promise<FabricObject | null> {
+  // Fabric serializes read-only properties such as 'type'; never pass those
+  // through the constructor/set API or runtime export will throw.
+  const { type: _type, version: _version, ...options } = data;
+  void _type;
+  void _version;
+
   if (data.spdfType === "source") {
     if (typeof data.spdfSrc === "string") {
       const image = await FabricImage.fromURL(data.spdfSrc);
-      image.set(data);
+      image.set(options);
       return image;
     }
-    if (data.type === "Textbox") return new Textbox(String(data.text ?? ""), data);
-    return new Rect(data);
+    if (data.type === "Textbox") return new Textbox(String(data.text ?? ""), options);
+    return new Rect(options);
   }
-  if (data.spdfType === "preview-mask") return new Rect(data);
+  if (data.spdfType === "preview-mask") return new Rect(options);
   if (data.spdfType === "shape") {
-    if (data.type === "Ellipse") return new Ellipse(data);
-    if (data.type === "Line") return new Line([0, 0, Number(data.width ?? 100), Number(data.height ?? 1)], data);
-    return new Rect(data);
+    if (data.type === "Ellipse") return new Ellipse(options);
+    if (data.type === "Line") return new Line([0, 0, Number(data.width ?? 100), Number(data.height ?? 1)], options);
+    return new Rect(options);
   }
   if (data.spdfType === "draw") {
-    // Fabric paths are reconstructed from serialized path commands.
     const { Path } = await import("fabric");
-    return new Path(data.path as string, data);
+    return new Path(data.path as string, options);
   }
-  if (data.spdfType === "text") {
-    return new Textbox(String(data.text ?? ""), data);
-  }
+  if (data.spdfType === "text") return new Textbox(String(data.text ?? ""), options);
   if (data.spdfType === "rect" || data.spdfType === "highlight") {
-    const rect = new Rect(data);
+    const rect = new Rect(options);
     if (data.spdfType === "highlight") rect.setControlsVisibility({ mtr: false });
     return rect;
   }
   if (data.spdfType === "image" && typeof data.spdfSrc === "string") {
-    const img = await FabricImage.fromURL(data.spdfSrc);
-    img.set(data);
-    return img;
+    const image = await FabricImage.fromURL(data.spdfSrc);
+    image.set(options);
+    return image;
   }
   return null;
 }
