@@ -195,7 +195,7 @@ async function previewNativeChange(canvas: Canvas, object: Editable): Promise<Ed
     cover.spdfId = object.spdfId;
     canvas.insertAt(0, cover);
   }
-  if (object.spdfKind === "shape" && !(object instanceof FabricImage) && object.spdfSrc) {
+  if ((object.spdfKind === "shape" || object.spdfKind === "image") && !(object instanceof FabricImage) && object.spdfSrc) {
     const image = await FabricImage.fromURL(object.spdfSrc);
     if (!canvas.getObjects().includes(object)) return object;
     image.set({
