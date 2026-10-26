@@ -2,31 +2,31 @@
 
 ## Status
 
-The editor currently supports **page overlays**. Users can add movable text, images, rectangles, and transparent highlights, then export a flattened PDF. Objects added by S-PDF can be moved or deleted before export.
+The editor supports **page overlays and experimental native content editing**. Users can add movable text, images, rectangles, and transparent highlights, then export a flattened PDF. Objects added by S-PDF can be moved or deleted before export.
 
-**Existing text and images already embedded in the source PDF cannot be selected, rewritten, removed, or repositioned by the current editor.** A white rectangle is a visible overlay, **not secure redaction**. This distinction matters when handling confidential documents.
+**Native text spans and embedded image blocks can now be selected, moved, resized and exported with replacement/removal using the Python converter. Complex vector graphics, OCR text in scanned pages, PDF forms and lossless layout reconstruction remain unsupported.** A white rectangle is a visible overlay, **not secure redaction**. This distinction matters when handling confidential documents.
 
 ## How it works
 
 1. `pdf.js` renders each original PDF page to a canvas.
 2. Fabric.js displays and edits new overlay objects above the rendered background.
-3. The editor converts the Fabric object positions from top-left, scaled canvas coordinates into bottom-left PDF coordinates.
+3. The editor converts overlay positions to PDF coordinates. Native source edits use PyMuPDF's top-left page coordinates.
 4. `POST /api/pdf/edit` applies the overlays to the original PDF using either pdf-lib (Node API) or PyMuPDF (Python converter).
-5. The returned PDF is downloaded. Original PDF objects are not imported as editable Fabric objects.
+5. The returned PDF is downloaded. Native source spans and raster blocks are imported as select targets. Source changes are forwarded to the Python backend for redaction and reconstruction.
 
 The Node and Python endpoints implement the same API but use different PDF engines. Every new feature should have equivalent behavior and tests in **both** backends.
 
 ## Known limitations
 
-- Existing PDF text, fonts, image objects, and vector graphics are not directly editable.
+- Simple existing text spans and raster images are editable experimentally. Native vector graphics and document fonts are not.
 - Overlays are flattened on export and cannot be reopened as individually editable S-PDF objects.
 - Text export does not preserve the source document's font family, kerning or typography.
 - Rotated source pages, nonstandard crop boxes, multi-line layout and some Unicode fonts may require additional coordinate/font handling.
 - Large documents currently render a thumbnail for every page, which can consume significant browser memory.
-- No undo/redo history, autosave or keyboard-driven editing workflow is provided.
+- Per-page undo/redo and keyboard object operations are available; autosave and cross-page transaction history are not.
 - A rectangle that visually hides text does not erase the text from the PDF content stream.
 
-## Roadmap for genuine Acrobat-style editing
+## Roadmap for more complete Acrobat-style editing
 
 ### 1. Extract and identify source content
 
@@ -55,3 +55,6 @@ Test edited text searchability, appearance, rotation, object persistence, multi-
 - The UI explains when fidelity cannot be preserved.
 
 These are **future acceptance criteria**, not claims about current functionality.
+
+
+See [Native Editing](NATIVE_EDITING.md) for the currently implemented scope and fidelity caveats.
