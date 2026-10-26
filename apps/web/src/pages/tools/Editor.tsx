@@ -129,9 +129,15 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
 
 async function loadObjectByType(data: Record<string, unknown>): Promise<FabricObject | null> {
   if (data.spdfType === "source") {
-    const rect = new Rect(data);
-    return rect;
+    if (typeof data.spdfSrc === "string") {
+      const image = await FabricImage.fromURL(data.spdfSrc);
+      image.set(data);
+      return image;
+    }
+    if (data.type === "Textbox") return new Textbox(String(data.text ?? ""), data);
+    return new Rect(data);
   }
+  if (data.spdfType === "preview-mask") return new Rect(data);
   if (data.spdfType === "shape") {
     if (data.type === "Ellipse") return new Ellipse(data);
     if (data.type === "Line") return new Line([0, 0, Number(data.width ?? 100), Number(data.height ?? 1)], data);
@@ -242,7 +248,7 @@ export function Editor() {
       const prevPage = currentPageRef.current;
       pageObjectsRef.current.set(
         prevPage,
-        canvas.getObjects().map((o) => o.toObject(["spdfType", "spdfSrc"]) as Record<string, unknown>)
+        serialize(canvas)
       );
 
       const request = ++loadingPageRef.current;
@@ -261,7 +267,41 @@ export function Editor() {
       canvas.backgroundImage = bg;
       canvas.remove(...canvas.getObjects());
 
+      if (!pageLoadedRef.current.has(pageIndex)) {
+        try {
+          const { elements } = await inspectPdfContent(file, pageIndex);
+          if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
+          for (const element of elements.slice(0, 600)) {
+            const object = nativeObject(element);
+            if (element.type === "image") {
+              const [x0, y0, x1, y1] = element.rect;
+              const clip = document.createElement("canvas");
+              clip.width = Math.max(1, Math.round((x1 - x0) * RENDER_SCALE));
+              clip.height = Math.max(1, Math.round((y1 - y0) * RENDER_SCALE));
+              clip.getContext("2d")?.drawImage(rendered, x0 * RENDER_SCALE, y0 * RENDER_SCALE,
+                clip.width, clip.height, 0, 0, clip.width, clip.height);
+              const src = clip.toDataURL("image/png");
+              const image = await FabricImage.fromURL(src);
+              image.set({ left: object.left, top: object.top, scaleX: 1, scaleY: 1 });
+              Object.assign(image, { spdfType: "source", spdfSrc: src, spdfId: object.spdfId,
+                spdfKind: "image", spdfOriginalRect: element.rect, spdfChanged: false });
+              canvas.add(image);
+            } else {
+              canvas.add(object);
+            }
+          }
+          pageObjectsRef.current.set(pageIndex, serialize(canvas));
+          pageLoadedRef.current.add(pageIndex);
+          setNativeWarning(elements.length > 600
+            ? "Only the first 600 existing elements can be selected on this page."
+            : undefined);
+        } catch (err) {
+          setNativeWarning("Existing PDF content could not be inspected. Start the Python converter to edit existing text or images.");
+          pageLoadedRef.current.add(pageIndex);
+        }
+      }
       const saved = pageObjectsRef.current.get(pageIndex) ?? [];
+      canvas.remove(...canvas.getObjects());
       for (const data of saved) {
         const obj = await loadObjectByType(data);
         if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
@@ -271,6 +311,11 @@ export function Editor() {
       canvas.requestRenderAll();
       currentPageRef.current = pageIndex;
       setCurrentPage(pageIndex);
+      setSelected(null);
+      if (!historyRef.current.has(pageIndex)) {
+        historyRef.current.set(pageIndex, [JSON.stringify(serialize(canvas))]);
+        historyIndexRef.current.set(pageIndex, 0);
+      }
     },
     [file]
   );
@@ -280,7 +325,60 @@ export function Editor() {
   // so a mount-only effect would run too early and never see the element.
   const attachCanvas = useCallback((el: HTMLCanvasElement | null) => {
     if (el) {
-      fabricRef.current = new Canvas(el, { preserveObjectStacking: true });
+      const canvas = new Canvas(el, { preserveObjectStacking: true });
+      fabricRef.current = canvas;
+      const selection = () => {
+        setSelected(canvas.getActiveObject() as Editable | null);
+        setSelectionVersion((value) => value + 1);
+      };
+      canvas.on("selection:created", selection);
+      canvas.on("selection:updated", selection);
+      canvas.on("selection:cleared", selection);
+      canvas.on("object:modified", ({ target }) => {
+        const object = target as Editable | undefined;
+        if (object?.spdfType === "source") {
+          object.spdfChanged = true;
+          if (!object.spdfAction || object.spdfAction === "move") object.spdfAction = "move";
+        }
+        selection();
+        recordHistory();
+      });
+      canvas.on("text:changed", ({ target }) => {
+        const object = target as Editable | undefined;
+        if (object?.spdfType === "source") {
+          object.spdfChanged = true;
+          object.spdfAction = "replace";
+        }
+        recordHistory();
+      });
+      canvas.on("path:created", ({ path }) => {
+        (path as Editable).spdfType = "draw";
+        recordHistory();
+      });
+      canvas.on("mouse:dblclick", async ({ target }) => {
+        const object = target as Editable | undefined;
+        if (!object || object.spdfType !== "source" || object.spdfKind !== "text" || object instanceof Textbox) return;
+        const text = new Textbox(object.spdfText ?? "", {
+          left: object.left, top: object.top,
+          width: Math.max(100, object.getScaledWidth()),
+          fontSize: (object.spdfSize || 12) * RENDER_SCALE,
+          fill: object.spdfColor || "#000000", backgroundColor: "#ffffff",
+          fontFamily: "Arial",
+        }) as Editable;
+        Object.assign(text, {
+          spdfType: "source", spdfId: object.spdfId, spdfKind: object.spdfKind,
+          spdfOriginalRect: object.spdfOriginalRect, spdfText: object.spdfText,
+          spdfFont: object.spdfFont, spdfSize: object.spdfSize,
+          spdfColor: object.spdfColor, spdfChanged: true, spdfAction: "replace",
+        });
+        canvas.remove(object);
+        canvas.add(text);
+        canvas.setActiveObject(text);
+        canvas.requestRenderAll();
+        text.enterEditing();
+        selection();
+        recordHistory();
+      });
     } else if (fabricRef.current) {
       fabricRef.current.dispose();
       fabricRef.current = null;
@@ -290,7 +388,11 @@ export function Editor() {
   async function handleFile(f: File) {
     loadingPageRef.current++;
     pageObjectsRef.current = new Map();
+    pageLoadedRef.current = new Set();
+    historyRef.current = new Map();
+    historyIndexRef.current = new Map();
     currentPageRef.current = 0;
+    setSelected(null);
     fabricRef.current?.remove(...(fabricRef.current?.getObjects() ?? []));
     setPageCount(0);
     setThumbs([]);
@@ -426,6 +528,7 @@ export function Editor() {
         const size = pageSizes[pageIndex];
         if (!size) continue;
         for (const raw of objs) {
+          if (raw.spdfType === "preview-mask") continue;
           const fake = raw as unknown as FabricObject;
           const converted = fabricObjectToEditObject(fake, pageIndex, size.height);
           if (converted) allObjects.push(converted);
