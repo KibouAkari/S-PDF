@@ -31,7 +31,7 @@ try {
   await page.getByRole("button", { name: "Zoom out" }).click();
   await page.getByRole("button", { name: "Fit page" }).click();
   await page.getByRole("button", { name: "Pan" }).click();
-  await page.getByRole("button", { name: "Select" }).click();
+  await page.getByRole("button", { name: "Select", exact: true }).click();
 
   await page.getByRole("button", { name: "Page 2" }).click();
   await page.getByText(/Page 2 of 2/).waitFor();
