@@ -9,13 +9,13 @@ try {
   page.on("pageerror", (error) => browserErrors.push(error.message));
   await page.goto("http://127.0.0.1:5173/tools/editor", { waitUntil: "networkidle" });
   const input = page.locator('input[type="file"]').first();
+  const inspection = page.waitForResponse((res) => res.url().includes("/api/pdf/content") && res.status() === 200, { timeout: 30000 });
   await input.setInputFiles("/tmp/editor-fixture.pdf");
+  await inspection;
 
   await page.getByRole("button", { name: /Fit page/i }).waitFor({ timeout: 30000 });
   await page.locator("canvas.upper-canvas").waitFor();
-  // Wait for the native content API to finish, not just for the PDF background.
-  await page.waitForResponse((res) => res.url().includes("/api/pdf/content") && res.status() === 200, { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(250);
 
   const upper = page.locator("canvas.upper-canvas");
   const rect = await upper.boundingBox();
@@ -29,8 +29,9 @@ try {
   await field.waitFor({ timeout: 15000 });
   assert.equal(await field.inputValue(), "Test document");
   await field.fill("Edited in browser");
+  const downloadEvent = page.waitForEvent("download", { timeout: 30000 });
   await page.getByRole("button", { name: /Save & Download/i }).click();
-  const download = await page.waitForEvent("download", { timeout: 30000 });
+  const download = await downloadEvent;
   await download.saveAs("/tmp/editor-export.pdf");
   assert.equal(browserErrors.length, 0, browserErrors.join("\n"));
   console.log("BROWSER EDIT SMOKE PASSED");
