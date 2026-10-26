@@ -91,11 +91,11 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
       type: "text",
       page,
       x,
-      y,
+      y: pdfHeight - (top + (tb.fontSize || 16) * scaleY) / RENDER_SCALE,
       text: tb.text ?? "",
       size: ((tb.fontSize ?? 16) * scaleY) / RENDER_SCALE,
       color: String(tb.fill ?? "#000000"),
-      font: "helvetica",
+      font: (obj as Editable).spdfFont || "helvetica",
       bold: tb.fontWeight === "bold" || tb.fontWeight === 700,
       italic: tb.fontStyle === "italic",
     };
@@ -487,6 +487,7 @@ export function Editor() {
     canvas.add(rect);
     canvas.setActiveObject(rect);
     canvas.requestRenderAll();
+    recordHistory();
   }
 
   async function addImage(files: File[]) {
@@ -633,7 +634,7 @@ export function Editor() {
       const canvas = fabricRef.current;
       pageObjectsRef.current.set(
         currentPageRef.current,
-        canvas.getObjects().map((o) => o.toObject(["spdfType", "spdfSrc"]) as Record<string, unknown>)
+        serialize(canvas)
       );
 
       const allObjects: EditObject[] = [];
@@ -664,7 +665,12 @@ export function Editor() {
     if (!canvas) return;
     canvas.selection = !panMode;
     canvas.skipTargetFind = panMode || drawingMode;
-    canvas.forEachObject((obj) => { obj.selectable = !panMode; obj.evented = !panMode; });
+    canvas.forEachObject((obj) => {
+      const editor = obj as Editable;
+      const locked = editor.spdfType === "preview-mask" || editor.spdfAction === "delete";
+      obj.selectable = !panMode && !drawingMode && !locked;
+      obj.evented = !panMode && !drawingMode && !locked;
+    });
     canvas.discardActiveObject();
     canvas.requestRenderAll();
   }, [panMode, drawingMode, currentPage]);
@@ -672,7 +678,7 @@ export function Editor() {
   if (!file) {
     return (
       <div>
-        <ToolHeader title="Edit PDF" description="Add and position annotations over PDF pages. Existing document text is not directly editable yet." />
+        <ToolHeader title="Edit PDF" description="Select existing PDF text or images, or add new annotations. Scanned text requires OCR." />
         <Card className="p-6">
           <Dropzone accept="application/pdf" onFiles={(files) => handleFile(files[0])} hint="Choose a PDF to start editing" />
         </Card>
@@ -683,7 +689,7 @@ export function Editor() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <ToolHeader title="Edit PDF" description="Add and move text, images, highlights and shapes. Existing text remains part of the original PDF." />
+        <ToolHeader title="Edit PDF" description="Edit existing text and images, draw, highlight and export. Advanced layouts and scanned text have limitations." />
         <Button onClick={handleSave} disabled={status === "loading"}>
           <Download className="h-4 w-4" /> Save & Download
         </Button>
