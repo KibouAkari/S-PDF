@@ -29,14 +29,27 @@ Every PDF operation is implemented **twice**: once in Node (`apps/api`, via
 long-lived Node API. See [CONTRIBUTING.md](CONTRIBUTING.md) for what that
 means when you change a PDF endpoint.
 
-Everything runs locally / self-hosted. Uploaded files are held in memory only
-for the duration of a request and are never written to disk or persisted.
+S-PDF can be self-hosted. Many PDF operations use in-memory buffers, while some
+conversions write temporary files that are cleaned up after the operation.
+Review your deployment, logs, temporary storage and resource limits before
+processing sensitive documents.
+
+
+## Engineering documentation
+
+- [Architecture and deployment modes](docs/ARCHITECTURE.md)
+- [PDF editor capabilities, limitations and roadmap](docs/EDITOR.md)
+- [Quality checks and release criteria](docs/QUALITY.md)
+
+**Editor status:** The current editor is an overlay editor, not yet a replacement
+for Acrobat's direct content editing. We intentionally distinguish shipped
+features from planned capabilities.
 
 ## Features
 
 - **Merge & Organize** - combine multiple PDFs, drag pages into any order, rotate or delete pages, export as one file.
 - **Split** - extract page ranges into separate PDFs (returned as a ZIP).
-- **Edit PDF** - add and freely move text, images and shapes on any page (fabric.js canvas over a `pdf.js`-rendered background), then flatten to a new PDF.
+- **Annotate PDF (experimental)** - add and move new text, images, shapes and transparent highlights, then flatten to a new PDF. Editing existing PDF text or images is not implemented yet; visual white boxes are not secure redaction.
 - **PDF ⇄ Word** - `pdf2docx` for PDF→Word; LibreOffice headless for Word→PDF.
 - **PDF ⇄ Images** - rasterize pages to PNG at a chosen DPI, or build a PDF from a set of images.
 - **Watermark** - centered or tiled text watermark with color/opacity/rotation controls.
