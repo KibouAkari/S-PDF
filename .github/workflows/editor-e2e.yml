@@ -56,6 +56,30 @@ jobs:
           node tests/e2e/editor-smoke.mjs
           python - <<'PY'
           import fitz
+          doc = fitz.open()
+          first = doc.new_page(width=1050, height=1480)
+          first.insert_text((35, 115), "LEFT EDGE", fontsize=18)
+          first.insert_text((900, 115), "RIGHT EDGE", fontsize=18)
+          second = doc.new_page(width=1050, height=1480)
+          second.insert_text((50, 160), "PAGE TWO", fontsize=18)
+          doc.save("/tmp/editor-wide-fixture.pdf")
+          doc.close()
+          PY
+          node tests/e2e/editor-viewport.mjs
+          python - <<'PY'
+          import fitz
+          doc = fitz.open("/tmp/editor-multipage-export.pdf")
+          assert doc.page_count == 2
+          content = doc[1].get_text()
+          assert "PAGE TWO" in content, content
+          assert "Annotation on second page" in content, content
+          assert "LEFT EDGE" in doc[0].get_text()
+          assert "RIGHT EDGE" in doc[0].get_text()
+          doc.close()
+          print("TWO-PAGE PDF EXPORT VALIDATED")
+          PY
+          python - <<'PY'
+          import fitz
           doc = fitz.open("/tmp/editor-export.pdf")
           content = doc[0].get_text()
           assert "Edited in browser" in content, content
@@ -70,6 +94,7 @@ jobs:
           name: editor-smoke-diagnostics
           path: |
             /tmp/editor-failure.png
+            /tmp/editor-viewport-failure.png
             /tmp/converter.log
             /tmp/api.log
             /tmp/web.log
