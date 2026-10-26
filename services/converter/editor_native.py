@@ -45,6 +45,22 @@ def elements_for_page(page: fitz.Page) -> list[dict]:
                 elements.append({
                     "id": f"i-{bi}", "type": "image", "rect": [x0, y0, x1, y1],
                 })
+    # Basic native vector paths (lines and rectangles). Complex curves/clips
+    # are intentionally not offered as editable because we cannot round-trip them.
+    for vi, drawing in enumerate(page.get_drawings()):
+        commands = drawing.get("items", [])
+        if not commands or len(commands) > 20:
+            continue
+        if any(cmd[0] not in ("l", "re") for cmd in commands):
+            continue
+        box = fitz.Rect(drawing["rect"])
+        if box.width < 0.5 or box.height < 0.5 or box.get_area() > page.rect.get_area() * 0.8:
+            continue
+        elements.append({
+            "id": f"v-{vi}", "type": "shape",
+            "rect": [box.x0, box.y0, box.x1, box.y1],
+            "color": "#%02x%02x%02x" % tuple(int(c * 255) for c in (drawing.get("color") or (0, 0, 0))),
+        })
     return elements
 
 
@@ -58,6 +74,11 @@ def _source_block(page: fitz.Page, element_id: str):
             if block["type"] != 0:
                 raise ValueError()
             return "text", span["bbox"], span
+        if parts[0] == "v" and len(parts) == 2:
+            drawing = page.get_drawings()[int(parts[1])]
+            if not drawing.get("items") or any(item[0] not in ("l", "re") for item in drawing["items"]):
+                raise ValueError()
+            return "shape", drawing["rect"], drawing
         if parts[0] == "i" and len(parts) == 2:
             block = blocks[int(parts[1])]
             if block["type"] != 1:
@@ -136,6 +157,8 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
                 font = FONT_NAMES[family][(1 if bold else 0) + (2 if italic else 0)]
                 color = _rgb(change.get("color", "#000000"))
                 prepared.append((kind, action, original_rect, target, content, font, size, color))
+            elif kind == "shape":
+                prepared.append((kind, action, original_rect, target, original, change.get("color")))
             else:
                 prepared.append((kind, action, original_rect, target, original["image"]))
 
@@ -143,15 +166,25 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
         for prepared_item in prepared:
             kind, action, source_rect, target, *data = prepared_item
             # A small additional border avoids leaving partial antialiased glyph edges.
-            page.add_redact_annot(source_rect, fill=(1, 1, 1))
-            if kind == "image":
-                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
-                                      graphics=fitz.PDF_REDACT_LINE_ART_NONE,
-                                      text=fitz.PDF_REDACT_TEXT_REMOVE)
-            else:
+            if kind == "shape":
+                # Expand around strokes so a fully-covered vector path is removed.
+                padding = max(6.0, float(data[0].get("width") or 1) * 5 + 1)
+                expanded = fitz.Rect(source_rect.x0 - padding, source_rect.y0 - padding,
+                                     source_rect.x1 + padding, source_rect.y1 + padding) & page.rect
+                page.add_redact_annot(expanded, fill=None)
                 page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
-                                      graphics=fitz.PDF_REDACT_LINE_ART_NONE,
-                                      text=fitz.PDF_REDACT_TEXT_REMOVE)
+                                      graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED,
+                                      text=fitz.PDF_REDACT_TEXT_NONE)
+            else:
+                page.add_redact_annot(source_rect, fill=(1, 1, 1))
+                if kind == "image":
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                                          graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                                          text=fitz.PDF_REDACT_TEXT_REMOVE)
+                else:
+                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                          graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                                          text=fitz.PDF_REDACT_TEXT_REMOVE)
             if action == "delete":
                 continue
             if kind == "image":
@@ -159,6 +192,32 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
                     page.insert_image(target, stream=data[0], keep_proportion=False, overlay=True)
                 except Exception as exc:
                     raise HTTPException(400, "Could not reconstruct the selected image") from exc
+                continue
+            if kind == "shape":
+                drawing, new_color = data
+                source = fitz.Rect(drawing["rect"])
+                if source.width < 0.01 or source.height < 0.01:
+                    raise HTTPException(400, "Cannot resize degenerate vector path")
+                sx, sy = target.width / source.width, target.height / source.height
+
+                def point(p):
+                    return fitz.Point(target.x0 + (p.x - source.x0) * sx,
+                                      target.y0 + (p.y - source.y0) * sy)
+
+                shape = page.new_shape()
+                for command in drawing["items"]:
+                    if command[0] == "re":
+                        r = fitz.Rect(command[1])
+                        shape.draw_rect(fitz.Rect(point(r.tl), point(r.br)))
+                    elif command[0] == "l":
+                        shape.draw_line(point(command[1]), point(command[2]))
+                try:
+                    stroke_color = _rgb(new_color) if new_color else drawing.get("color")
+                    shape.finish(color=stroke_color, fill=drawing.get("fill"),
+                                 width=float(drawing.get("width") or 1) * min(sx, sy))
+                    shape.commit(overlay=True)
+                except Exception as exc:
+                    raise HTTPException(400, "Could not reconstruct selected vector shape") from exc
                 continue
             content, font, size, color = data
             if not content:
