@@ -6,7 +6,7 @@
   **Merge, convert, edit, and clean up your PDFs - fast, free, and self-hosted.**
 
   [![CI](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml/badge.svg)](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Project source: MIT](https://img.shields.io/badge/Project_source-MIT-blue.svg)](LICENSE)
 </div>
 
 A fast, self-hosted, open-source alternative to Adobe Acrobat / iLovePDF.
@@ -44,7 +44,7 @@ processing sensitive documents.
 - [Licensing and third-party obligations](docs/LICENSING.md)
 - [Automated and manual testing](docs/TESTING.md)
 
-**Editor status:** Native editing is experimental: simple text spans and embedded raster images can be modified in exported PDFs, but complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
+**Editor status:** Native editing is experimental: text spans, embedded raster images and simple line/rectangle paths can be moved, changed or removed. Complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
 
 ## Features
 
@@ -59,7 +59,7 @@ processing sensitive documents.
 
 ## Getting started (local dev)
 
-Prerequisites: Node.js 20+, Python 3.11+, and (optionally) LibreOffice for Word→PDF.
+Prerequisites: Node.js 22.13+ (or Node.js 24+), Python 3.11+, and LibreOffice for Word→PDF.
 
 ```powershell
 # 1. Install JS dependencies (root + both apps, via npm workspaces)
@@ -147,10 +147,8 @@ services/
 - Word→PDF requires LibreOffice (`soffice`) installed on the machine running
   the converter service (bundled automatically in the Docker image; not
   available on Vercel).
-- The visual editor adds/moves new content and can redact/whiteout existing
-  content with a filled rectangle; PDFs don't have reflowable text, so true
-  in-place editing of pre-existing text works the same way professional PDF
-  editors do it - cover + re-draw.
+- The visual editor can reconstruct selected native text, raster images, and simple line/rectangle paths with PyMuPDF. Changes remove the selected original content where supported. Layout may change. A white overlay rectangle is **not** a secure redaction, and S-PDF has no security-verified privacy-redaction workflow.
+- Original document fonts, complex graphics, scanned text, form fields, and annotation round-trips are not preserved by arbitrary changes. See [Native Editing](docs/NATIVE_EDITING.md).
 
 ## Contributing
 
@@ -161,11 +159,6 @@ project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 Found a security issue? Please see [SECURITY.md](SECURITY.md) instead of
 opening a public issue.
 
-## License
+## Licensing
 
-[MIT](LICENSE) - do whatever you like with it, attribution appreciated.
-
-
-## Open-source license notice
-
-S-PDF's source is distributed under the repository [LICENSE](LICENSE). The Python PDF engine PyMuPDF/MuPDF is dual-licensed under AGPLv3 or a commercial license; its terms also apply to deployments and distributions. See [licensing guidance](docs/LICENSING.md) before shipping a public service.
+S-PDF's own source is under [MIT](LICENSE). The complete installed application includes separate dependency licenses. **PyMuPDF/MuPDF is AGPLv3 or commercially licensed**, and deploying or redistributing an integrated solution requires an appropriate licensing review. See [Licensing and third-party obligations](docs/LICENSING.md).
