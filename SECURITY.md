@@ -2,7 +2,7 @@
 
 ## Supported Versions
 
-S-PDF is currently pre-1.0 and distributed as a single rolling `main` branch.
+S-PDF is under active development and distributed as a rolling `main` branch.
 Security fixes are applied to the latest commit only.
 
 ## Reporting a Vulnerability
@@ -34,3 +34,13 @@ as possible given the scope.
   timeout, but treat any deployment exposed to untrusted users as running
   third-party document parsers (PyMuPDF, pdf2docx, LibreOffice) — keep these
   dependencies up to date.
+
+## Public deployment requirements
+
+Do not expose a public instance without reviewing untrusted file handling. PDF, image and DOCX parsers have a broad attack surface. The converter uses PyMuPDF and may invoke LibreOffice; both should run with restricted privileges, constrained network access, memory/CPU limits, request limits and temporary file controls.
+
+A browser may submit native PDF source modifications; these operations must not be treated as a secure sensitive-data redaction service. Changing visible text or covering an area is not a substitute for verifying that confidential strings, image pixels, annotations and metadata have been removed from the final document.
+
+The repository's automated workflows validate builds and selected editing behaviors, but do not yet implement comprehensive file fuzzing, software-composition-analysis gates or penetration testing. Dependabot monitors dependency update availability; it does **not** by itself resolve security advisories. Resolve and review vulnerability reports before production releases.
+
+See [Licensing](docs/LICENSING.md), [Testing](docs/TESTING.md) and [Architecture](docs/ARCHITECTURE.md) for the remainder of the release requirements.

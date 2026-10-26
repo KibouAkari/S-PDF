@@ -2,8 +2,46 @@ import { Router } from "express";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { upload } from "../middleware/upload.js";
 import { asyncHandler, HttpError } from "../lib/http.js";
+import { config } from "../config.js";
+import FormData from "form-data";
+import fetch from "node-fetch";
 
 export const editRouter = Router();
+
+async function converterRequest(path: string, file: Express.Multer.File, fields: Record<string, string>) {
+  const form = new FormData();
+  form.append("file", file.buffer, { filename: file.originalname, contentType: "application/pdf" });
+  Object.entries(fields).forEach(([key, value]) => form.append(key, value));
+  let response;
+  try {
+    response = await fetch(config.converterUrl + path, {
+      method: "POST",
+      body: form as never,
+      headers: form.getHeaders(),
+    });
+  } catch {
+    throw new HttpError(503, "PDF content editor requires the running Python converter service");
+  }
+  if (!response.ok) {
+    let reason = await response.text();
+    try {
+      const parsed = JSON.parse(reason);
+      reason = String(parsed.detail ?? parsed.error ?? reason);
+    } catch { /* returned plain text */ }
+    throw new HttpError(response.status, reason.slice(0, 500));
+  }
+  return response;
+}
+
+/** Identify selectable original PDF text/image objects. */
+editRouter.post("/content", upload.single("file"), asyncHandler(async (req, res) => {
+  if (!req.file) throw new HttpError(400, "No file uploaded");
+  const page = Number(req.body.page ?? 0);
+  if (!Number.isInteger(page) || page < 0) throw new HttpError(400, "Invalid page");
+  const response = await converterRequest("/api/pdf/content", req.file, { page: String(page) });
+  res.json(await response.json());
+}));
+
 
 type EditObject =
   | { type: "rect" | "highlight"; page: number; x: number; y: number; width: number; height: number; color?: string }
@@ -19,7 +57,8 @@ type EditObject =
       bold?: boolean;
       italic?: boolean;
     }
-  | { type: "image"; page: number; x: number; y: number; width: number; height: number; dataUrl: string };
+  | { type: "image"; page: number; x: number; y: number; width: number; height: number; dataUrl: string }
+  | { type: "source"; page: number; elementId: string; action: "replace" | "move" | "delete"; x: number; y: number; width: number; height: number; text?: string; size?: number; font?: string; color?: string; bold?: boolean; italic?: boolean };
 
 const FONT_MAP = {
   helvetica: {
@@ -62,6 +101,14 @@ editRouter.post(
       throw new HttpError(400, "`objects` must be valid JSON");
     }
     if (!Array.isArray(objects)) throw new HttpError(400, "`objects` must be an array");
+    if (objects.length > 1000) throw new HttpError(400, "Too many editor objects");
+    if (objects.some((item) => item?.type === "source")) {
+      const response = await converterRequest("/api/pdf/edit", file, { objects: JSON.stringify(objects) });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", 'attachment; filename="edited.pdf"');
+      res.send(Buffer.from(await response.arrayBuffer()));
+      return;
+    }
 
     const doc = await PDFDocument.load(file.buffer, { ignoreEncryption: true });
     const pages = doc.getPages();

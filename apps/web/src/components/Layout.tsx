@@ -33,10 +33,10 @@ export function Layout() {
             <Link to="/tools/compress" className={navLinkClass}>Enhance</Link>
           </nav>
           <a
-            href="https://github.com/kibouakari"
+            href="https://github.com/KibouAkari/S-PDF"
             target="_blank"
             rel="noreferrer"
-            aria-label="GitHub profile"
+            aria-label="S-PDF GitHub repository"
             className="flex h-9 w-9 items-center justify-center rounded-lg border border-ink-600 text-ink-200 transition-all duration-200 hover:scale-105 hover:bg-ink-800 hover:text-ink-50 active:scale-95"
           >
             <GithubIcon className="h-4 w-4" />
@@ -50,7 +50,7 @@ export function Layout() {
 
       <footer className="border-t border-ink-800/80 py-8 text-center text-sm text-ink-400">
         <p>&copy; {new Date().getFullYear()} Kibou Akari. All rights reserved.</p>
-        <p className="mt-1 text-xs text-ink-500">Files are processed and discarded automatically - never stored.</p>
+        <p className="mt-1 text-xs text-ink-500">Files are processed on the configured server; some conversions use temporary files.</p>
       </footer>
     </div>
   );

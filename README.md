@@ -6,7 +6,7 @@
   **Merge, convert, edit, and clean up your PDFs - fast, free, and self-hosted.**
 
   [![CI](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml/badge.svg)](https://github.com/kibouakari/S-PDF/actions/workflows/ci.yml)
-  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+  [![Project source: MIT](https://img.shields.io/badge/Project_source-MIT-blue.svg)](LICENSE)
 </div>
 
 A fast, self-hosted, open-source alternative to Adobe Acrobat / iLovePDF.
@@ -22,9 +22,9 @@ to a third party.
 | API       | Node.js + Express + TypeScript, `pdf-lib` for in-process PDF manipulation (used for local dev / Docker) |
 | Converter | Python + FastAPI, `PyMuPDF` (page ops, rasterization, compression), `pdf2docx` (PDF→Word), LibreOffice headless (Word→PDF) |
 
-Every PDF operation is implemented **twice**: once in Node (`apps/api`, via
+Many classic PDF operations are implemented **twice**: once in Node (`apps/api`, via
 `pdf-lib`) for local development and Docker deployments, and once in Python
-(`services/converter`, via `PyMuPDF`) so the app can also run as a two-service
+(`services/converter`, via `PyMuPDF`). **Native editing of original PDF elements is implemented in Python only**; the Node API forwards those requests to the converter. This also allows a two-service
 (`web` + `converter`) deployment on platforms like Vercel that don't run a
 long-lived Node API. See [CONTRIBUTING.md](CONTRIBUTING.md) for what that
 means when you change a PDF endpoint.
@@ -40,16 +40,17 @@ processing sensitive documents.
 - [Architecture and deployment modes](docs/ARCHITECTURE.md)
 - [PDF editor capabilities, limitations and roadmap](docs/EDITOR.md)
 - [Quality checks and release criteria](docs/QUALITY.md)
+- [Native editing guide and limitations](docs/NATIVE_EDITING.md)
+- [Licensing and third-party obligations](docs/LICENSING.md)
+- [Automated and manual testing](docs/TESTING.md)
 
-**Editor status:** The current editor is an overlay editor, not yet a replacement
-for Acrobat's direct content editing. We intentionally distinguish shipped
-features from planned capabilities.
+**Editor status:** Native editing is experimental: text spans, embedded raster images and simple line/rectangle paths can be moved, changed or removed. Complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
 
 ## Features
 
 - **Merge & Organize** - combine multiple PDFs, drag pages into any order, rotate or delete pages, export as one file.
 - **Split** - extract page ranges into separate PDFs (returned as a ZIP).
-- **Annotate PDF (experimental)** - add and move new text, images, shapes and transparent highlights, then flatten to a new PDF. Editing existing PDF text or images is not implemented yet; visual white boxes are not secure redaction.
+- **Edit PDF (experimental)** - select and change existing PDF text spans and embedded images, move and resize selections, and add text, images, shapes or freehand highlights. Native changes use the Python converter and may not preserve complex formatting. Scanned text requires OCR, which is not yet included.
 - **PDF ⇄ Word** - `pdf2docx` for PDF→Word; LibreOffice headless for Word→PDF.
 - **PDF ⇄ Images** - rasterize pages to PNG at a chosen DPI, or build a PDF from a set of images.
 - **Watermark** - centered or tiled text watermark with color/opacity/rotation controls.
@@ -58,22 +59,31 @@ features from planned capabilities.
 
 ## Getting started (local dev)
 
-Prerequisites: Node.js 20+, Python 3.11+, and (optionally) LibreOffice for Word→PDF.
+Prerequisites: Node.js 22.13+ (or Node.js 24+), Python 3.11+, and LibreOffice for Word→PDF. Python commands below expect `python` to be available.
+
+Install dependencies in the repository root. Use a Python virtual environment so the converter packages do not modify your global Python installation.
+
+On macOS or Linux:
+
+```bash
+npm install --workspaces
+python -m venv .venv
+source .venv/bin/activate
+npm run converter:install
+cp apps/api/.env.example apps/api/.env
+```
+
+On Windows PowerShell:
 
 ```powershell
-# 1. Install JS dependencies (root + both apps, via npm workspaces)
 npm install --workspaces
-
-# 2. Set up the Python converter service
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 npm run converter:install
-
-# 3. Copy env defaults
 Copy-Item apps/api/.env.example apps/api/.env
-
-# 4. Run everything (API + web) in one terminal, converter in another
-npm run converter:dev
-npm run dev
 ```
+
+In the first terminal, activate the virtual environment and start `npm run converter:dev`. In another terminal, start `npm run dev` for the frontend and Node API. The Python service **must** be available for selecting or changing existing PDF content.
 
 - Web: http://localhost:5173
 - API: http://localhost:4000
@@ -146,10 +156,8 @@ services/
 - Word→PDF requires LibreOffice (`soffice`) installed on the machine running
   the converter service (bundled automatically in the Docker image; not
   available on Vercel).
-- The visual editor adds/moves new content and can redact/whiteout existing
-  content with a filled rectangle; PDFs don't have reflowable text, so true
-  in-place editing of pre-existing text works the same way professional PDF
-  editors do it - cover + re-draw.
+- The visual editor can reconstruct selected native text, raster images, and simple line/rectangle paths with PyMuPDF. Changes remove the selected original content where supported. Layout may change. A white overlay rectangle is **not** a secure redaction, and S-PDF has no security-verified privacy-redaction workflow.
+- Original document fonts, complex graphics, scanned text, form fields, and annotation round-trips are not preserved by arbitrary changes. See [Native Editing](docs/NATIVE_EDITING.md).
 
 ## Contributing
 
@@ -160,6 +168,6 @@ project follows the [Code of Conduct](CODE_OF_CONDUCT.md).
 Found a security issue? Please see [SECURITY.md](SECURITY.md) instead of
 opening a public issue.
 
-## License
+## Licensing
 
-[MIT](LICENSE) - do whatever you like with it, attribution appreciated.
+S-PDF's own source is under [MIT](LICENSE). The complete installed application includes separate dependency licenses. **PyMuPDF/MuPDF is AGPLv3 or commercially licensed**, and deploying or redistributing an integrated solution requires an appropriate licensing review. See [Licensing and third-party obligations](docs/LICENSING.md).

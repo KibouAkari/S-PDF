@@ -85,6 +85,26 @@ export async function pdfInfo(file: File) {
   return res.data as PdfInfo;
 }
 
+export interface NativePdfElement {
+  id: string;
+  type: "text" | "image" | "shape";
+  rect: [number, number, number, number];
+  text?: string;
+  fontSize?: number;
+  fontName?: string;
+  bold?: boolean;
+  italic?: boolean;
+  color?: string;
+}
+
+export async function inspectPdfContent(file: File, page: number) {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("page", String(page));
+  const res = await api.post("/pdf/content", form);
+  return res.data as { page: number; elements: NativePdfElement[] };
+}
+
 export type EditObject =
   | { type: "rect" | "highlight"; page: number; x: number; y: number; width: number; height: number; color?: string }
   | {
@@ -99,7 +119,8 @@ export type EditObject =
       bold?: boolean;
       italic?: boolean;
     }
-  | { type: "image"; page: number; x: number; y: number; width: number; height: number; dataUrl: string };
+  | { type: "image"; page: number; x: number; y: number; width: number; height: number; dataUrl: string }
+  | { type: "source"; page: number; elementId: string; action: "replace" | "move" | "delete"; x: number; y: number; width: number; height: number; text?: string; size?: number; color?: string; font?: "helvetica" | "times" | "courier"; bold?: boolean; italic?: boolean };
 
 export async function editPdf(file: File, objects: EditObject[]) {
   const form = new FormData();
