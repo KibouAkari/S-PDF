@@ -253,6 +253,8 @@ export function Editor() {
   const [message, setMessage] = useState<string>();
   const [zoom, setZoom] = useState(1);
   const [pagePixels, setPagePixels] = useState({ width: 0, height: 0 });
+  const [pagePreview, setPagePreview] = useState<string | null>(null);
+  const [isPageRendering, setIsPageRendering] = useState(false);
   const [panMode, setPanMode] = useState(false);
   const [drawingMode, setDrawingMode] = useState(false);
   const [selected, setSelected] = useState<Editable | null>(null);
@@ -335,6 +337,8 @@ export function Editor() {
       if (!file || !fabricRef.current) return;
       const canvas = fabricRef.current;
       const request = ++loadingPageRef.current;
+      setIsPageRendering(true);
+      setPagePreview(null);
 
       // Persist whatever is currently on the canvas before switching away.
       const prevPage = currentPageRef.current;
@@ -344,16 +348,17 @@ export function Editor() {
       const { canvas: rendered } = await renderPdfPage(file, pageIndex, RENDER_SCALE);
       if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
       setPagePixels({ width: rendered.width, height: rendered.height });
+      // Keep the PDF as a separate visible layer. Fabric draws ONLY editable
+      // objects; a canvas background could previously replace/hide entire pages.
+      setPagePreview(rendered.toDataURL("image/png"));
       const view = viewportRef.current;
       if (view && pageIndex === 0) {
         const fit = Math.min((view.clientWidth - 48) / rendered.width, (view.clientHeight - 48) / rendered.height);
         setZoom(Math.max(0.2, Math.min(2.5, fit)));
       }
       canvas.setDimensions({ width: rendered.width, height: rendered.height });
-      const bgUrl = rendered.toDataURL("image/png");
-      const bg = await FabricImage.fromURL(bgUrl);
-      if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
-      canvas.backgroundImage = bg;
+      canvas.backgroundImage = undefined;
+      canvas.backgroundColor = "rgba(0,0,0,0)";
       canvas.remove(...canvas.getObjects());
       canvasPageRef.current = pageIndex;
 
@@ -376,17 +381,10 @@ export function Editor() {
               clip.getContext("2d")?.drawImage(rendered, x0 * RENDER_SCALE, y0 * RENDER_SCALE,
                 clip.width, clip.height, 0, 0, clip.width, clip.height);
               const src = clip.toDataURL("image/png");
-              if (element.type === "shape") {
-                object.spdfSrc = src;
-                canvas.add(object);
-                continue;
-              }
-              const image = await FabricImage.fromURL(src);
-              if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
-              image.set({ left: object.left, top: object.top, scaleX: 1, scaleY: 1 });
-              Object.assign(image, { spdfType: "source", spdfSrc: src, spdfId: object.spdfId,
-                spdfKind: element.type, spdfOriginalRect: element.rect, spdfChanged: false, spdfColor: element.color || "#000000" });
-              canvas.add(image);
+              object.spdfSrc = src;
+              // Never duplicate entire raster images as opaque editable overlays.
+              // The underlying PDF layer owns its visuals until an object changes.
+              canvas.add(object);
             } else {
               canvas.add(object);
             }
@@ -411,6 +409,7 @@ export function Editor() {
       }
 
       canvas.requestRenderAll();
+      setIsPageRendering(false);
       currentPageRef.current = pageIndex;
       canvasPageRef.current = pageIndex;
       setCurrentPage(pageIndex);
@@ -494,6 +493,8 @@ export function Editor() {
 
   async function handleFile(f: File) {
     loadingPageRef.current++;
+    setPagePreview(null);
+    setIsPageRendering(true);
     pageObjectsRef.current = new Map();
     pageLoadedRef.current = new Set();
     historyRef.current = new Map();
@@ -925,9 +926,21 @@ export function Editor() {
             onPointerCancel={stopPan}
           >
             <div className="flex min-h-full min-w-full w-max items-start justify-center">
-              <div className="relative shrink-0 overflow-hidden" style={{ width: pagePixels.width * zoom, height: pagePixels.height * zoom }}>
-                <div style={{ width: pagePixels.width, height: pagePixels.height, transform: `scale(${zoom})`, transformOrigin: "top left", pointerEvents: panMode ? "none" : "auto" }}>
-                  <canvas ref={attachCanvas} className="rounded-sm shadow-lg" />
+              <div className="relative shrink-0 rounded-sm bg-white shadow-lg" style={{ width: pagePixels.width * zoom, height: pagePixels.height * zoom }}>
+                <div style={{ width: pagePixels.width, height: pagePixels.height, transform: `scale(${zoom})`, transformOrigin: "top left" }}>
+                  {pagePreview && (
+                    <img
+                      src={pagePreview}
+                      alt={`PDF page ${currentPage + 1}`}
+                      data-testid="pdf-page-image"
+                      draggable={false}
+                      className="pointer-events-none absolute left-0 top-0 block select-none"
+                      style={{ width: pagePixels.width, height: pagePixels.height }}
+                    />
+                  )}
+                  <div className="absolute left-0 top-0" style={{ pointerEvents: panMode ? "none" : "auto" }}>
+                    <canvas ref={attachCanvas} data-testid="editor-overlay-canvas" />
+                  </div>
                 </div>
               </div>
             </div>
