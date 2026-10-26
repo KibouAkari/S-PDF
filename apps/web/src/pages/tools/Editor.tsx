@@ -121,6 +121,11 @@ export function Editor() {
       const { canvas: rendered } = await renderPdfPage(file, pageIndex, RENDER_SCALE);
       if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
       setPagePixels({ width: rendered.width, height: rendered.height });
+      const view = viewportRef.current;
+      if (view && pageIndex === 0) {
+        const fit = Math.min((view.clientWidth - 48) / rendered.width, (view.clientHeight - 48) / rendered.height);
+        setZoom(Math.max(0.2, Math.min(2.5, fit)));
+      }
       canvas.setDimensions({ width: rendered.width, height: rendered.height });
       const bgUrl = rendered.toDataURL("image/png");
       const bg = await FabricImage.fromURL(bgUrl);
@@ -155,6 +160,10 @@ export function Editor() {
   }, []);
 
   async function handleFile(f: File) {
+    loadingPageRef.current++;
+    pageObjectsRef.current = new Map();
+    currentPageRef.current = 0;
+    fabricRef.current?.remove(...(fabricRef.current?.getObjects() ?? []));
     setPageCount(0);
     setThumbs([]);
     setPagePixels({ width: 0, height: 0 });
@@ -224,6 +233,7 @@ export function Editor() {
     (tb as FabricObject & { spdfType?: string }).spdfType = "text";
     canvas.add(tb);
     canvas.setActiveObject(tb);
+    canvas.requestRenderAll();
   }
 
   function addRect() {
@@ -233,6 +243,7 @@ export function Editor() {
     (rect as FabricObject & { spdfType?: string }).spdfType = "rect";
     canvas.add(rect);
     canvas.setActiveObject(rect);
+    canvas.requestRenderAll();
   }
 
   function addHighlight() {
@@ -262,12 +273,13 @@ export function Editor() {
     (img as FabricObject & { spdfType?: string; spdfSrc?: string }).spdfSrc = dataUrl;
     canvas.add(img);
     canvas.setActiveObject(img);
+    canvas.requestRenderAll();
   }
 
   function deleteSelected() {
     const canvas = fabricRef.current;
     const active = canvas?.getActiveObject();
-    if (canvas && active) canvas.remove(active);
+    if (canvas && active) { canvas.remove(active); canvas.requestRenderAll(); }
   }
 
   async function handleSave() {
