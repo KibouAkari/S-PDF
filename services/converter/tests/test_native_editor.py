@@ -67,6 +67,19 @@ class NativeEditorTests(unittest.TestCase):
         with self.assertRaises(Exception):
             apply_source_edits(self.doc, [edit, edit])
 
+    def test_move_existing_vector_rectangle(self):
+        self.page.draw_rect(fitz.Rect(220, 220, 280, 260), color=(1, 0, 0),
+                            fill=(0, 1, 0), width=1.5)
+        vectors = [e for e in elements_for_page(self.page) if e["type"] == "shape"]
+        self.assertTrue(vectors)
+        apply_source_edits(self.doc, [{
+            "type": "source", "page": 0, "elementId": vectors[0]["id"],
+            "action": "move", "x": 310, "y": 310, "width": 60, "height": 40,
+        }])
+        boxes = [fitz.Rect(d["rect"]) for d in self.page.get_drawings()]
+        self.assertTrue(any(b.x0 >= 300 and b.y0 >= 300 for b in boxes), boxes)
+        self.assertFalse(any(b.x0 <= 220 and b.y0 <= 220 for b in boxes), boxes)
+
     def test_image_blocks_are_discoverable(self):
         # A second page with a raster image rather than glyphs mimics a scanned PDF.
         image_page = self.doc.new_page(width=420, height=600)
