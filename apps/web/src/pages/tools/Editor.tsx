@@ -800,42 +800,60 @@ export function Editor() {
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <ToolHeader title="Edit PDF" description="Edit existing text and images, draw, highlight and export. Advanced layouts and scanned text have limitations." />
-        <Button onClick={handleSave} disabled={status === "loading"}>
+        <Button onClick={handleSave} disabled={status === "loading" || isPageRendering}>
           <Download className="h-4 w-4" /> Save & Download
         </Button>
       </div>
 
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={addText}><Type className="h-4 w-4" /> Add text</Button>
+      <div role="toolbar" aria-label="Edit PDF tools" className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-ink-700/70 bg-ink-800/40 p-2">
+        <Button variant="secondary" size="sm" onClick={() => { setPanMode(false); setDrawingMode(false); }} title="Select and move objects">
+          <MousePointer2 className="h-4 w-4" /> Select
+        </Button>
+        <span className="mx-0.5 h-5 w-px bg-ink-600" aria-hidden="true" />
+        <Button variant="secondary" size="sm" onClick={addText}><Type className="h-4 w-4" /> Text</Button>
         <Button variant="secondary" size="sm" onClick={addHighlight}><Highlighter className="h-4 w-4" /> Highlight</Button>
-        <Button variant="secondary" size="sm" onClick={addRect}><Square className="h-4 w-4" /> Rectangle</Button>
-        <Button variant="secondary" size="sm" onClick={() => addShape("ellipse")}><Circle className="h-4 w-4" /> Ellipse</Button>
-        <Button variant="secondary" size="sm" onClick={() => addShape("line")}><Minus className="h-4 w-4" /> Line</Button>
-        <Button variant="secondary" size="sm" onClick={toggleDrawing}><PenLine className="h-4 w-4" /> {drawingMode ? "Stop marking" : "Freehand marker"}</Button>
-        <label>
-          <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => e.target.files && addImage(Array.from(e.target.files))} />
-          <span className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-ink-50 hover:bg-ink-700">
-            <ImagePlus className="h-4 w-4" /> Add image
-          </span>
+        <Button variant="secondary" size="sm" onClick={toggleDrawing}><PenLine className="h-4 w-4" /> {drawingMode ? "Stop drawing" : "Draw"}</Button>
+        <label className="sr-only" htmlFor="editor-shape">Add shape</label>
+        <select id="editor-shape" aria-label="Add shape" value="" onChange={(event) => {
+          if (event.target.value === "rectangle") addRect();
+          if (event.target.value === "ellipse") addShape("ellipse");
+          if (event.target.value === "line") addShape("line");
+        }} className="h-8 rounded-lg border border-ink-600 bg-ink-800 px-2 text-sm text-ink-50">
+          <option value="">Shapes…</option>
+          <option value="rectangle">Rectangle</option>
+          <option value="ellipse">Ellipse</option>
+          <option value="line">Line</option>
+        </select>
+        <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-ink-600 bg-ink-800 px-3 text-sm text-ink-50 hover:bg-ink-700">
+          <input type="file" accept="image/png,image/jpeg" className="sr-only" onChange={(event) => {
+            if (event.target.files?.length) void addImage(Array.from(event.target.files));
+            event.target.value = "";
+          }} />
+          <ImagePlus className="h-4 w-4" /> Image
         </label>
-        <Button variant="danger" size="sm" onClick={deleteSelected}><Trash2 className="h-4 w-4" /> Delete selected</Button>
+        <span className="min-w-3 flex-1" aria-hidden="true" />
+        <Button variant="secondary" size="sm" onClick={() => setPanMode((old) => !old)} title="Drag the page without changing objects">
+          <Hand className="h-4 w-4" /> {panMode ? "Stop pan" : "Pan"}
+        </Button>
       </div>
 
-      <div className="mb-3 flex flex-wrap items-center gap-2" role="toolbar" aria-label="PDF viewport controls">
-        <Button size="sm" variant="secondary" onClick={() => void stepHistory(-1)}><Undo2 className="h-4 w-4" /> Undo</Button>
-        <Button size="sm" variant="secondary" onClick={() => void stepHistory(1)}><Redo2 className="h-4 w-4" /> Redo</Button>
-        <Button size="sm" variant="secondary" onClick={() => setPanMode(false)}><MousePointer2 className="h-4 w-4" /> Select</Button>
-        <Button size="sm" variant="secondary" onClick={() => setPanMode(true)}><Hand className="h-4 w-4" /> Pan {panMode ? "✓" : ""}</Button>
-        <Button size="sm" variant="secondary" onClick={() => setZoom((v) => Math.max(0.2, +(v - 0.15).toFixed(2)))}><ZoomOut className="h-4 w-4" /> Zoom out</Button>
-        <span className="min-w-14 text-center text-sm text-ink-300">{Math.round(zoom * RENDER_SCALE * 100)}%</span>
-        <Button size="sm" variant="secondary" onClick={() => setZoom((v) => Math.min(2.5, +(v + 0.15).toFixed(2)))}><ZoomIn className="h-4 w-4" /> Zoom in</Button>
+      <div className="mb-3 flex flex-wrap items-center gap-1.5" role="toolbar" aria-label="Page navigation and history">
+        <Button size="sm" variant="secondary" onClick={() => void stepHistory(-1)} title="Undo (Ctrl+Z)" aria-label="Undo"><Undo2 className="h-4 w-4" /></Button>
+        <Button size="sm" variant="secondary" onClick={() => void stepHistory(1)} title="Redo (Ctrl+Y)" aria-label="Redo"><Redo2 className="h-4 w-4" /></Button>
+        <Button size="sm" variant="secondary" onClick={deleteSelected} disabled={!selected} title="Delete selected (Del)" aria-label="Delete selected"><Trash2 className="h-4 w-4" /></Button>
+        <span className="mx-2 h-5 w-px bg-ink-600" aria-hidden="true" />
+        <Button size="sm" variant="secondary" onClick={() => setZoom((v) => Math.max(0.2, +(v - 0.15).toFixed(2)))} title="Zoom out" aria-label="Zoom out"><ZoomOut className="h-4 w-4" /></Button>
+        <span className="min-w-14 text-center text-sm tabular-nums text-ink-300">{Math.round(zoom * RENDER_SCALE * 100)}%</span>
+        <Button size="sm" variant="secondary" onClick={() => setZoom((v) => Math.min(2.5, +(v + 0.15).toFixed(2)))} title="Zoom in" aria-label="Zoom in"><ZoomIn className="h-4 w-4" /></Button>
         <Button size="sm" variant="secondary" onClick={fitPage}><Maximize2 className="h-4 w-4" /> Fit page</Button>
+        <span className="min-w-3 flex-1" aria-hidden="true" />
+        <span className="text-xs text-ink-400">{file.name} · {pageCount} {pageCount === 1 ? "page" : "pages"}</span>
       </div>
 
       {selected && (
         <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-ink-700 bg-ink-800/70 p-3">
           <div className="mr-2 text-xs font-semibold text-ink-200">
-            {(selected as Editable).spdfType === "source" ? `Existing ${(selected as Editable).spdfKind} · ${(selected as Editable).spdfId}` : "Selected object"}
+            {(selected as Editable).spdfType === "source" ? `Existing ${(selected as Editable).spdfKind} · ${(selected as Editable).spdfId}` : "Object settings"}
           </div>
           {(selected instanceof Textbox || ((selected as Editable).spdfType === "source" && (selected as Editable).spdfKind === "text")) && (
             <>
@@ -948,8 +966,9 @@ export function Editor() {
         </Card>
       </div>
 
+      {isPageRendering && <p role="status" className="mt-3 text-sm text-ink-400">Rendering PDF page…</p>}
       {nativeWarning && <p role="status" className="mt-3 rounded-md border border-amber-500/40 p-2 text-sm text-amber-300">{nativeWarning}</p>}
-      <p className="mt-2 text-xs text-ink-400">Page {currentPage + 1} of {pageCount}. Use Select to move added objects, Pan to move around the page, and Fit page to see the whole document. Scanned text is part of an image and cannot yet be edited directly.</p>
+      <p className="mt-2 text-xs text-ink-400">Page {currentPage + 1} of {pageCount}. Click existing content to select, drag to move, double-click text to edit. Scanned text requires OCR.</p>
 
       <div className="mt-4">
         <StatusBanner state={status} message={message} />
