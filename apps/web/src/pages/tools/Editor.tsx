@@ -915,6 +915,8 @@ export function Editor() {
         <Card className="min-w-0 overflow-hidden p-0">
           <div
             ref={viewportRef}
+            data-testid="pdf-editor-viewport"
+            aria-label="PDF page workspace"
             className={cn("relative h-[min(74vh,850px)] min-h-[420px] w-full overflow-auto p-4", panMode ? "cursor-grab active:cursor-grabbing" : "")}
             style={{ touchAction: panMode ? "none" : "auto" }}
             onPointerDown={startPan}
