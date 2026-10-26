@@ -17,6 +17,8 @@ import fitz  # PyMuPDF
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
+from editor_native import elements_for_page, apply_source_edits
+
 router = APIRouter(prefix="/api/pdf", tags=["pdf"])
 
 FONT_MAP = {
@@ -269,6 +271,23 @@ async def images_to_pdf(files: list[UploadFile] = File(...)):
     return Response(content=data, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="images.pdf"'})
 
 
+@router.post("/content")
+async def inspect_content(file: UploadFile = File(...), page: int = Form(0)):
+    """Identify native PDF text spans and image blocks for the interactive editor."""
+    if file.content_type not in ("application/pdf", "application/octet-stream"):
+        raise HTTPException(400, "Expected a PDF")
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise HTTPException(413, "PDF exceeds the editor 50 MB limit")
+    doc = _open_pdf(data)
+    try:
+        if not (0 <= page < doc.page_count):
+            raise HTTPException(400, "Invalid page index")
+        return {"page": page, "elements": elements_for_page(doc[page])}
+    finally:
+        doc.close()
+
+
 @router.post("/edit")
 async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
     try:
@@ -280,9 +299,17 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
     if len(items) > 5000:
         raise HTTPException(400, "Too many objects (max 5000)")
 
-    doc = _open_pdf(await file.read())
+    pdf_data = await file.read()
+    if len(pdf_data) > 50 * 1024 * 1024:
+        raise HTTPException(413, "PDF exceeds the editor 50 MB limit")
+    doc = _open_pdf(pdf_data)
+    apply_source_edits(doc, [obj for obj in items if isinstance(obj, dict) and obj.get("type") == "source"])
 
     for obj in items:
+        if isinstance(obj, dict) and obj.get("type") == "source":
+            continue
+        if not isinstance(obj, dict):
+            raise HTTPException(400, "Invalid edit object")
         page_index = obj.get("page")
         if page_index is None or not (0 <= page_index < doc.page_count):
             raise HTTPException(400, f"Object references invalid page {page_index}")
