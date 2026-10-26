@@ -46,6 +46,8 @@ function nativeObject(item: NativePdfElement): Editable {
   rectangle.spdfSize = item.fontSize || 12;
   rectangle.spdfColor = item.color || "#000000";
   rectangle.spdfFont = "helvetica";
+  rectangle.spdfBold = item.bold || false;
+  rectangle.spdfItalic = item.italic || false;
   rectangle.spdfChanged = false;
   return rectangle;
 }
@@ -75,15 +77,22 @@ function fabricObjectToEditObject(obj: FabricObject, page: number, pdfHeight: nu
       x: left / RENDER_SCALE, y: top / RENDER_SCALE,
       width: width / RENDER_SCALE, height: height / RENDER_SCALE,
       text: native instanceof Textbox ? native.text : native.spdfText,
-      size: native.spdfSize || 12,
+      size: (native.spdfSize || 12) * scaleY,
       color: native.spdfColor || "#000000",
       font: native.spdfFont || "helvetica",
       bold: native.spdfBold || false, italic: native.spdfItalic || false,
     };
   }
   if (kind === "shape" || kind === "draw") {
-    return { type: "image", page, x, y, width: width / RENDER_SCALE,
-      height: height / RENDER_SCALE, dataUrl: obj.toDataURL({ format: "png" }) };
+    const bounds = obj.getBoundingRect();
+    return {
+      type: "image", page,
+      x: bounds.left / RENDER_SCALE,
+      y: pdfHeight - (bounds.top + bounds.height) / RENDER_SCALE,
+      width: bounds.width / RENDER_SCALE,
+      height: bounds.height / RENDER_SCALE,
+      dataUrl: obj.toDataURL({ format: "png" }),
+    };
   }
   if (kind === "text") {
     const tb = obj as Textbox;
@@ -135,6 +144,9 @@ async function loadObjectByType(data: Record<string, unknown>): Promise<FabricOb
   void _version;
 
   if (data.spdfType === "source") {
+    if (data.spdfKind === "shape" && data.type === "Rect" && data.spdfChanged !== true) {
+      return new Rect(options);
+    }
     if (typeof data.spdfSrc === "string") {
       const image = await FabricImage.fromURL(data.spdfSrc);
       image.set(options);
@@ -169,7 +181,7 @@ async function loadObjectByType(data: Record<string, unknown>): Promise<FabricOb
 
 /** Show a truthful preview when changing a native element. The backend performs
  * actual content-stream removal on export; this mask only improves the UI preview. */
-function previewNativeChange(canvas: Canvas, object: Editable): Editable {
+async function previewNativeChange(canvas: Canvas, object: Editable): Promise<Editable> {
   if (object.spdfType !== "source" || !object.spdfOriginalRect) return object;
   if (!canvas.getObjects().some((item) => (item as Editable).spdfType === "preview-mask" &&
       (item as Editable).spdfId === object.spdfId)) {
@@ -183,20 +195,44 @@ function previewNativeChange(canvas: Canvas, object: Editable): Editable {
     cover.spdfId = object.spdfId;
     canvas.insertAt(0, cover);
   }
+  if (object.spdfKind === "shape" && !(object instanceof FabricImage) && object.spdfSrc) {
+    const image = await FabricImage.fromURL(object.spdfSrc);
+    if (!canvas.getObjects().includes(object)) return object;
+    image.set({
+      left: object.left, top: object.top,
+      scaleX: (object.getScaledWidth() / image.width) || 1,
+      scaleY: (object.getScaledHeight() / image.height) || 1,
+      flipX: object.flipX, flipY: object.flipY, angle: object.angle,
+    });
+    Object.assign(image, {
+      spdfType: object.spdfType, spdfSrc: object.spdfSrc, spdfId: object.spdfId,
+      spdfKind: object.spdfKind, spdfOriginalRect: object.spdfOriginalRect,
+      spdfText: object.spdfText, spdfFont: object.spdfFont, spdfSize: object.spdfSize,
+      spdfColor: object.spdfColor, spdfBold: object.spdfBold, spdfItalic: object.spdfItalic,
+      spdfChanged: object.spdfChanged, spdfAction: object.spdfAction,
+    });
+    canvas.remove(object);
+    canvas.add(image);
+    canvas.setActiveObject(image);
+    object = image as Editable;
+  }
   if (object.spdfKind !== "text" || object instanceof Textbox) return object;
+  const size = (object.spdfSize || 12) * (object.scaleY || 1);
   const replacement = new Textbox(object.spdfText || "", {
     left: object.left, top: object.top,
-    width: Math.max(200, object.getScaledWidth()),
-    fontSize: (object.spdfSize || 12) * RENDER_SCALE,
+    width: Math.min(Math.max(200, object.getScaledWidth()), Math.max(1, canvas.getWidth() - (object.left ?? 0))),
+    fontSize: size * RENDER_SCALE,
     fill: object.spdfColor || "#000000",
     backgroundColor: "#ffffff",
+    fontWeight: object.spdfBold ? "bold" : "normal",
+    fontStyle: object.spdfItalic ? "italic" : "normal",
     fontFamily: object.spdfFont === "times" ? "Times New Roman" :
       object.spdfFont === "courier" ? "Courier New" : "Arial",
   }) as Editable;
   Object.assign(replacement, {
     spdfType: "source", spdfKind: object.spdfKind,
     spdfId: object.spdfId, spdfOriginalRect: object.spdfOriginalRect,
-    spdfText: object.spdfText, spdfSize: object.spdfSize,
+    spdfText: object.spdfText, spdfSize: size,
     spdfColor: object.spdfColor, spdfFont: object.spdfFont,
     spdfBold: object.spdfBold, spdfItalic: object.spdfItalic,
     spdfChanged: true, spdfAction: object.spdfAction || "replace",
@@ -245,26 +281,33 @@ export function Editor() {
     historyIndexRef.current.set(page, next.length - 1);
   }
   async function stepHistory(direction: -1 | 1) {
+    if (historyRestoringRef.current) return;
     const page = currentPageRef.current;
     const list = historyRef.current.get(page) ?? [];
     const index = (historyIndexRef.current.get(page) ?? -1) + direction;
     if (index < 0 || index >= list.length || !fabricRef.current) return;
     historyRestoringRef.current = true;
     const canvas = fabricRef.current;
-    const saved = JSON.parse(list[index]) as Record<string, unknown>[];
-    canvas.discardActiveObject();
-    canvas.remove(...canvas.getObjects());
-    for (const item of saved) {
-      const object = await loadObjectByType(item);
-      if (object) canvas.add(object);
+    const request = loadingPageRef.current;
+    try {
+      const saved = JSON.parse(list[index]) as Record<string, unknown>[];
+      pageObjectsRef.current.set(page, serialize(canvas));
+      canvas.discardActiveObject();
+      canvas.remove(...canvas.getObjects());
+      for (const item of saved) {
+        const object = await loadObjectByType(item);
+        if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
+        if (object) canvas.add(object);
+      }
+      canvas.requestRenderAll();
+      pageObjectsRef.current.set(page, saved);
+      historyIndexRef.current.set(page, index);
+      setSelected(null);
+    } finally {
+      historyRestoringRef.current = false;
     }
-    canvas.requestRenderAll();
-    pageObjectsRef.current.set(page, saved);
-    historyIndexRef.current.set(page, index);
-    setSelected(null);
-    historyRestoringRef.current = false;
   }
-  function updateSelected(patch: Record<string, unknown>) {
+  async function updateSelected(patch: Record<string, unknown>) {
     const canvas = fabricRef.current;
     if (!canvas || !selected) return;
     selected.set(patch);
@@ -272,7 +315,8 @@ export function Editor() {
     if (selected.spdfType === "source") {
       selected.spdfChanged = true;
       selected.spdfAction = "replace";
-      updated = previewNativeChange(canvas, selected);
+      updated = await previewNativeChange(canvas, selected);
+      if (fabricRef.current !== canvas || !canvas.getObjects().includes(updated)) return;
       setSelected(updated);
     }
     updated.setCoords();
@@ -284,20 +328,19 @@ export function Editor() {
   const fabricRef = useRef<Canvas | null>(null);
   const pageObjectsRef = useRef<Map<number, Record<string, unknown>[]>>(new Map());
   const currentPageRef = useRef(0);
+  const canvasPageRef = useRef(0);
 
   const loadPage = useCallback(
     async (pageIndex: number) => {
       if (!file || !fabricRef.current) return;
       const canvas = fabricRef.current;
+      const request = ++loadingPageRef.current;
 
       // Persist whatever is currently on the canvas before switching away.
       const prevPage = currentPageRef.current;
-      pageObjectsRef.current.set(
-        prevPage,
-        serialize(canvas)
-      );
-
-      const request = ++loadingPageRef.current;
+      if (!historyRestoringRef.current && canvasPageRef.current === prevPage) {
+        pageObjectsRef.current.set(prevPage, serialize(canvas));
+      }
       const { canvas: rendered } = await renderPdfPage(file, pageIndex, RENDER_SCALE);
       if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
       setPagePixels({ width: rendered.width, height: rendered.height });
@@ -312,12 +355,18 @@ export function Editor() {
       if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
       canvas.backgroundImage = bg;
       canvas.remove(...canvas.getObjects());
+      canvasPageRef.current = pageIndex;
 
       if (!pageLoadedRef.current.has(pageIndex)) {
         try {
           const { elements } = await inspectPdfContent(file, pageIndex);
           if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
-          for (const element of elements.slice(0, 600)) {
+          const pageElements = elements.slice(0, 600);
+          const orderedElements = [
+            ...pageElements.filter((element) => element.type === "shape"),
+            ...pageElements.filter((element) => element.type !== "shape"),
+          ];
+          for (const element of orderedElements) {
             const object = nativeObject(element);
             if (element.type === "image" || element.type === "shape") {
               const [x0, y0, x1, y1] = element.rect;
@@ -327,7 +376,13 @@ export function Editor() {
               clip.getContext("2d")?.drawImage(rendered, x0 * RENDER_SCALE, y0 * RENDER_SCALE,
                 clip.width, clip.height, 0, 0, clip.width, clip.height);
               const src = clip.toDataURL("image/png");
+              if (element.type === "shape") {
+                object.spdfSrc = src;
+                canvas.add(object);
+                continue;
+              }
               const image = await FabricImage.fromURL(src);
+              if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
               image.set({ left: object.left, top: object.top, scaleX: 1, scaleY: 1 });
               Object.assign(image, { spdfType: "source", spdfSrc: src, spdfId: object.spdfId,
                 spdfKind: element.type, spdfOriginalRect: element.rect, spdfChanged: false, spdfColor: element.color || "#000000" });
@@ -341,7 +396,8 @@ export function Editor() {
           setNativeWarning(elements.length > 600
             ? "Only the first 600 existing elements can be selected on this page."
             : undefined);
-        } catch (err) {
+        } catch {
+          if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
           setNativeWarning("Existing PDF content could not be inspected. Start the Python converter to edit existing text or images.");
           pageLoadedRef.current.add(pageIndex);
         }
@@ -356,6 +412,7 @@ export function Editor() {
 
       canvas.requestRenderAll();
       currentPageRef.current = pageIndex;
+      canvasPageRef.current = pageIndex;
       setCurrentPage(pageIndex);
       setSelected(null);
       if (!historyRef.current.has(pageIndex)) {
@@ -374,7 +431,15 @@ export function Editor() {
       const canvas = new Canvas(el, { preserveObjectStacking: true });
       fabricRef.current = canvas;
       const selection = () => {
-        setSelected(canvas.getActiveObject() as Editable | null);
+        const active = canvas.getActiveObject() as Editable | null;
+        if (active?.type === "ActiveSelection" &&
+            (active as Editable & { getObjects?: () => FabricObject[] }).getObjects?.()
+              .some((item) => (item as Editable).spdfType === "source")) {
+          canvas.discardActiveObject();
+          setSelected(null);
+          return;
+        }
+        setSelected(active);
         setSelectionVersion((value) => value + 1);
       };
       canvas.on("selection:created", selection);
@@ -385,7 +450,13 @@ export function Editor() {
         if (object?.spdfType === "source") {
           object.spdfChanged = true;
           if (!object.spdfAction || object.spdfAction === "move") object.spdfAction = "move";
-          previewNativeChange(canvas, object);
+          void previewNativeChange(canvas, object).then((updated) => {
+            if (fabricRef.current !== canvas || !canvas.getObjects().includes(updated)) return;
+            setSelected(updated);
+            selection();
+            recordHistory();
+          });
+          return;
         }
         selection();
         recordHistory();
@@ -407,11 +478,13 @@ export function Editor() {
         if (!object || object.spdfType !== "source" || object.spdfKind !== "text") return;
         object.spdfChanged = true;
         object.spdfAction = "replace";
-        const visible = previewNativeChange(canvas, object);
-        if (visible instanceof Textbox) visible.enterEditing();
-        selection();
-        canvas.requestRenderAll();
-        recordHistory();
+        void previewNativeChange(canvas, object).then((visible) => {
+          if (fabricRef.current !== canvas || !canvas.getObjects().includes(visible)) return;
+          if (visible instanceof Textbox) visible.enterEditing();
+          selection();
+          canvas.requestRenderAll();
+          recordHistory();
+        });
       });
     } else if (fabricRef.current) {
       fabricRef.current.dispose();
@@ -426,6 +499,7 @@ export function Editor() {
     historyRef.current = new Map();
     historyIndexRef.current = new Map();
     currentPageRef.current = 0;
+    canvasPageRef.current = 0;
     setSelected(null);
     fabricRef.current?.remove(...(fabricRef.current?.getObjects() ?? []));
     setPageCount(0);
@@ -603,7 +677,8 @@ export function Editor() {
       } else if (object.spdfSrc) {
         clipboardRef.current = {
           type: "Image", spdfType: "image", spdfSrc: object.spdfSrc,
-          left: object.left, top: object.top,
+          left: object.left, top: object.top, scaleX: object.scaleX, scaleY: object.scaleY,
+          flipX: object.flipX, flipY: object.flipY,
         };
       }
     } else {
@@ -767,18 +842,18 @@ export function Editor() {
                 Text
                 <input className="rounded-md border border-ink-600 bg-ink-950 px-2 py-1.5 text-sm text-ink-50"
                   value={selected instanceof Textbox ? selected.text : (selected as Editable).spdfText ?? ""}
-                  onChange={(e) => updateSelected(selected instanceof Textbox
+                  onChange={(e) => { void updateSelected(selected instanceof Textbox
                     ? { text: e.target.value, spdfText: e.target.value }
-                    : { spdfText: e.target.value })} />
+                    : { spdfText: e.target.value }); }} />
               </label>
               <label className="flex flex-col gap-1 text-xs text-ink-300">
                 Font
                 <select className="rounded-md border border-ink-600 bg-ink-950 px-2 py-1.5"
                   value={(selected as Editable).spdfFont || "helvetica"}
-                  onChange={(e) => updateSelected({
+                  onChange={(e) => { void updateSelected({
                     spdfFont: e.target.value,
                     ...(selected instanceof Textbox ? { fontFamily: e.target.value === "courier" ? "Courier New" : e.target.value === "times" ? "Times New Roman" : "Arial" } : {}),
-                  })}>
+                  }); }}>
                   <option value="helvetica">Helvetica</option>
                   <option value="times">Times</option>
                   <option value="courier">Courier</option>
@@ -791,17 +866,17 @@ export function Editor() {
                   value={Math.round((selected as Editable).spdfSize || (selected instanceof Textbox ? (selected.fontSize || 18) / RENDER_SCALE : 12))}
                   onChange={(e) => {
                     const size = Math.max(1, Math.min(180, Number(e.target.value) || 12));
-                    updateSelected({ spdfSize: size, ...(selected instanceof Textbox ? { fontSize: size * RENDER_SCALE } : {}) });
+                    void updateSelected({ spdfSize: size, ...(selected instanceof Textbox ? { fontSize: size * RENDER_SCALE } : {}) });
                   }} />
               </label>
               <button type="button" title="Bold" aria-label="Bold" aria-pressed={Boolean((selected as Editable).spdfBold)}
                 className={cn("rounded-md border border-ink-600 p-2", (selected as Editable).spdfBold && "bg-brand-600")}
-                onClick={() => updateSelected({ spdfBold: !(selected as Editable).spdfBold, ...(selected instanceof Textbox ? { fontWeight: !(selected as Editable).spdfBold ? "bold" : "normal" } : {}) })}>
+                onClick={() => { void updateSelected({ spdfBold: !(selected as Editable).spdfBold, ...(selected instanceof Textbox ? { fontWeight: !(selected as Editable).spdfBold ? "bold" : "normal" } : {}) }); }}>
                 <Bold className="h-4 w-4" />
               </button>
               <button type="button" title="Italic" aria-label="Italic" aria-pressed={Boolean((selected as Editable).spdfItalic)}
                 className={cn("rounded-md border border-ink-600 p-2", (selected as Editable).spdfItalic && "bg-brand-600")}
-                onClick={() => updateSelected({ spdfItalic: !(selected as Editable).spdfItalic, ...(selected instanceof Textbox ? { fontStyle: !(selected as Editable).spdfItalic ? "italic" : "normal" } : {}) })}>
+                onClick={() => { void updateSelected({ spdfItalic: !(selected as Editable).spdfItalic, ...(selected instanceof Textbox ? { fontStyle: !(selected as Editable).spdfItalic ? "italic" : "normal" } : {}) }); }}>
                 <Italic className="h-4 w-4" />
               </button>
             </>
@@ -811,10 +886,10 @@ export function Editor() {
             <input type="color" className="h-8 w-12 cursor-pointer rounded" value={
               (selected as Editable).spdfType === "source" ? (selected as Editable).spdfColor || "#000000" :
               typeof selected.fill === "string" && /^#[0-9a-f]{6}$/i.test(selected.fill) ? selected.fill : "#14b8a6"
-            } onChange={(e) => updateSelected({
+            } onChange={(e) => { void updateSelected({
               ...((selected as Editable).spdfType === "source" ? { spdfColor: e.target.value } : { fill: e.target.value }),
               ...(selected instanceof Textbox ? { fill: e.target.value } : {}),
-            })} />
+            }); }} />
           </label>
           <Button size="sm" variant="danger" onClick={deleteSelected}><Trash2 className="h-4 w-4" /> Delete</Button>
           <p className="w-full text-xs text-ink-400">Double-click existing text to edit it inline. Drag or resize the selection handles. Ctrl/Cmd+C, X, V and Z work when focus is outside a text field.</p>

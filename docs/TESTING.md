@@ -12,6 +12,7 @@ The GitHub Actions CI workflow performs:
 Run the native tests locally:
 
 ```bash
+python -m pip install -r services/converter/requirements-test.txt
 PYTHONPATH=services/converter python -m unittest discover -s services/converter/tests -v
 ```
 

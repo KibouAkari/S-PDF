@@ -92,6 +92,8 @@ export interface NativePdfElement {
   text?: string;
   fontSize?: number;
   fontName?: string;
+  bold?: boolean;
+  italic?: boolean;
   color?: string;
 }
 

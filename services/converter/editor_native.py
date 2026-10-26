@@ -19,6 +19,18 @@ FONT_NAMES = {
 }
 
 
+def _drawing_bounds(drawing) -> fitz.Rect:
+    bounds = fitz.Rect(drawing["rect"])
+    padding = max(0.5, float(drawing.get("width") or 1) / 2)
+    if bounds.width < 0.5:
+        bounds.x0 -= padding
+        bounds.x1 += padding
+    if bounds.height < 0.5:
+        bounds.y0 -= padding
+        bounds.y1 += padding
+    return bounds
+
+
 def elements_for_page(page: fitz.Page) -> list[dict]:
     """Return selectable text spans and image blocks with stable IDs for this original page."""
     elements: list[dict] = []
@@ -37,6 +49,8 @@ def elements_for_page(page: fitz.Page) -> list[dict]:
                         "rect": [x0, y0, x1, y1],
                         "fontSize": span.get("size", 12),
                         "fontName": span.get("font", ""),
+                        "bold": bool(span.get("flags", 0) & fitz.TEXT_FONT_BOLD),
+                        "italic": bool(span.get("flags", 0) & fitz.TEXT_FONT_ITALIC),
                         "color": f"#{span.get('color', 0) & 0xffffff:06x}",
                     })
         elif block.get("type") == 1:
@@ -53,7 +67,7 @@ def elements_for_page(page: fitz.Page) -> list[dict]:
             continue
         if any(cmd[0] not in ("l", "re") for cmd in commands):
             continue
-        box = fitz.Rect(drawing["rect"])
+        box = _drawing_bounds(drawing)
         if box.width < 0.5 or box.height < 0.5 or box.get_area() > page.rect.get_area() * 0.8:
             continue
         elements.append({
@@ -78,7 +92,7 @@ def _source_block(page: fitz.Page, element_id: str):
             drawing = page.get_drawings()[int(parts[1])]
             if not drawing.get("items") or any(item[0] not in ("l", "re") for item in drawing["items"]):
                 raise ValueError()
-            return "shape", drawing["rect"], drawing
+            return "shape", _drawing_bounds(drawing), drawing
         if parts[0] == "i" and len(parts) == 2:
             block = blocks[int(parts[1])]
             if block["type"] != 1:
@@ -162,29 +176,36 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
             else:
                 prepared.append((kind, action, original_rect, target, original["image"]))
 
-        # Operate on each region separately so text-only redaction doesn't remove images.
-        for prepared_item in prepared:
-            kind, action, source_rect, target, *data = prepared_item
-            # A small additional border avoids leaving partial antialiased glyph edges.
+        # Remove all source regions before reconstructing any replacements.
+        # Redaction options differ by element type, so apply each type's group
+        # before moving on while keeping reconstruction until every group ends.
+        for kind in ("shape", "image", "text"):
+            matching = [item for item in prepared if item[0] == kind]
+            if not matching:
+                continue
+            for _, _, source_rect, _, *data in matching:
+                if kind == "shape":
+                    padding = max(6.0, float(data[0].get("width") or 1) * 5 + 1)
+                    expanded = fitz.Rect(source_rect.x0 - padding, source_rect.y0 - padding,
+                                         source_rect.x1 + padding, source_rect.y1 + padding) & page.rect
+                    page.add_redact_annot(expanded, fill=None)
+                else:
+                    page.add_redact_annot(source_rect, fill=(1, 1, 1))
             if kind == "shape":
-                # Expand around strokes so a fully-covered vector path is removed.
-                padding = max(6.0, float(data[0].get("width") or 1) * 5 + 1)
-                expanded = fitz.Rect(source_rect.x0 - padding, source_rect.y0 - padding,
-                                     source_rect.x1 + padding, source_rect.y1 + padding) & page.rect
-                page.add_redact_annot(expanded, fill=None)
                 page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
                                       graphics=fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED,
                                       text=fitz.PDF_REDACT_TEXT_NONE)
+            elif kind == "image":
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
+                                      graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                                      text=fitz.PDF_REDACT_TEXT_REMOVE)
             else:
-                page.add_redact_annot(source_rect, fill=(1, 1, 1))
-                if kind == "image":
-                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_REMOVE,
-                                          graphics=fitz.PDF_REDACT_LINE_ART_NONE,
-                                          text=fitz.PDF_REDACT_TEXT_REMOVE)
-                else:
-                    page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
-                                          graphics=fitz.PDF_REDACT_LINE_ART_NONE,
-                                          text=fitz.PDF_REDACT_TEXT_REMOVE)
+                page.apply_redactions(images=fitz.PDF_REDACT_IMAGE_NONE,
+                                      graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+                                      text=fitz.PDF_REDACT_TEXT_REMOVE)
+
+        for prepared_item in prepared:
+            kind, action, source_rect, target, *data = prepared_item
             if action == "delete":
                 continue
             if kind == "image":
@@ -196,13 +217,18 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
             if kind == "shape":
                 drawing, new_color = data
                 source = fitz.Rect(drawing["rect"])
-                if source.width < 0.01 or source.height < 0.01:
-                    raise HTTPException(400, "Cannot resize degenerate vector path")
-                sx, sy = target.width / source.width, target.height / source.height
+                is_line = source.width < 0.01 or source.height < 0.01
+                if is_line:
+                    dx, dy = target.x0 - source_rect.x0, target.y0 - source_rect.y0
 
-                def point(p):
-                    return fitz.Point(target.x0 + (p.x - source.x0) * sx,
-                                      target.y0 + (p.y - source.y0) * sy)
+                    def point(p):
+                        return fitz.Point(p.x + dx, p.y + dy)
+                else:
+                    sx, sy = target.width / source.width, target.height / source.height
+
+                    def point(p):
+                        return fitz.Point(target.x0 + (p.x - source.x0) * sx,
+                                          target.y0 + (p.y - source.y0) * sy)
 
                 shape = page.new_shape()
                 for command in drawing["items"]:
@@ -214,7 +240,7 @@ def apply_source_edits(doc: fitz.Document, operations: list[dict]) -> None:
                 try:
                     stroke_color = _rgb(new_color) if new_color else drawing.get("color")
                     shape.finish(color=stroke_color, fill=drawing.get("fill"),
-                                 width=float(drawing.get("width") or 1) * min(sx, sy))
+                                 width=float(drawing.get("width") or 1) * (1 if is_line else min(sx, sy)))
                     shape.commit(overlay=True)
                 except Exception as exc:
                     raise HTTPException(400, "Could not reconstruct selected vector shape") from exc

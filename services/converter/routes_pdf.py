@@ -17,17 +17,9 @@ import fitz  # PyMuPDF
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
-from editor_native import elements_for_page, apply_source_edits
+from editor_native import FONT_NAMES, elements_for_page, apply_source_edits
 
 router = APIRouter(prefix="/api/pdf", tags=["pdf"])
-
-FONT_MAP = {
-    (False, False): "helv",
-    (True, False): "hebo",
-    (False, True): "heit",
-    (True, True): "hebi",
-}
-
 
 def _hex_to_rgb(hex_str: str) -> tuple[float, float, float]:
     h = (hex_str or "").lstrip("#")
@@ -325,7 +317,10 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
             page.draw_rect(fitz.Rect(x, top_y, x + w, top_y + h), color=None, fill=fill, fill_opacity=0.32 if obj_type == "highlight" else 1)
         elif obj_type == "text":
             x, y = obj.get("x", 0), obj.get("y", 0)
-            font = FONT_MAP[(bool(obj.get("bold")), bool(obj.get("italic")))]
+            family = obj.get("font", "helvetica")
+            if not isinstance(family, str) or family not in FONT_NAMES:
+                raise HTTPException(400, "Unsupported font family")
+            font = FONT_NAMES[family][(1 if obj.get("bold") else 0) + (2 if obj.get("italic") else 0)]
             color = _hex_to_rgb(obj.get("color", "#000000"))
             page.insert_text(
                 fitz.Point(x, page_height - y),
