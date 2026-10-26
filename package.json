@@ -24,6 +24,6 @@
     "converter:dev": "python -m uvicorn main:app --reload --port 8001 --app-dir services/converter"
   },
   "devDependencies": {
-    "concurrently": "^9.1.0"
+    "concurrently": "^10.0.6"
   }
 }
