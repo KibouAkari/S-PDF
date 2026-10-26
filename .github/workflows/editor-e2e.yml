@@ -1,5 +1,9 @@
 name: Editor browser smoke test
 
+concurrency:
+  group: editor-smoke-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 on:
   pull_request:
     paths:
@@ -27,7 +31,7 @@ jobs:
           python-version: "3.11"
       - run: npm install --workspaces
       - run: npm install --no-save --no-package-lock playwright@1.55.0
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install chromium
       - run: pip install -r services/converter/requirements.txt
       - run: npm run build -w apps/api
       - name: Edit and export a real PDF in Chromium
