@@ -4,7 +4,7 @@
 
 The editor supports **page overlays and experimental native content editing**. Users can add movable text, images, rectangles, and transparent highlights, then export a flattened PDF. Objects added by S-PDF can be moved or deleted before export.
 
-**Native text spans and embedded image blocks can now be selected, moved, resized and exported with replacement/removal using the Python converter. Complex vector graphics, OCR text in scanned pages, PDF forms and lossless layout reconstruction remain unsupported.** A white rectangle is a visible overlay, **not secure redaction**. This distinction matters when handling confidential documents.
+**Native text spans, embedded image blocks and basic rectangular/line drawing paths can now be selected, moved, resized and exported with replacement/removal using the Python converter. Complex vector graphics, OCR text in scanned pages, PDF forms and lossless layout reconstruction remain unsupported.** A white rectangle is a visible overlay, **not secure redaction**. This distinction matters when handling confidential documents.
 
 ## How it works
 
@@ -12,13 +12,13 @@ The editor supports **page overlays and experimental native content editing**. U
 2. Fabric.js displays and edits new overlay objects above the rendered background.
 3. The editor converts overlay positions to PDF coordinates. Native source edits use PyMuPDF's top-left page coordinates.
 4. `POST /api/pdf/edit` applies the overlays to the original PDF using either pdf-lib (Node API) or PyMuPDF (Python converter).
-5. The returned PDF is downloaded. Native source spans and raster blocks are imported as select targets. Source changes are forwarded to the Python backend for redaction and reconstruction.
+5. The returned PDF is downloaded. Native source spans, image blocks and simple line/rectangle paths are imported as select targets. Source changes are forwarded to the Python backend for redaction and reconstruction.
 
 The Node and Python endpoints implement the same API but use different PDF engines. Every new feature should have equivalent behavior and tests in **both** backends.
 
 ## Known limitations
 
-- Simple existing text spans and raster images are editable experimentally. Native vector graphics and document fonts are not.
+- Simple existing text spans and raster images are editable experimentally. Complex vector graphics and original document fonts are not.
 - Overlays are flattened on export and cannot be reopened as individually editable S-PDF objects.
 - Text export does not preserve the source document's font family, kerning or typography.
 - Rotated source pages, nonstandard crop boxes, multi-line layout and some Unicode fonts may require additional coordinate/font handling.
