@@ -16,7 +16,7 @@ type Editable = FabricObject & {
   spdfType?: string;
   spdfSrc?: string;
   spdfId?: string;
-  spdfKind?: "text" | "image";
+  spdfKind?: "text" | "image" | "shape";
   spdfOriginalRect?: [number, number, number, number];
   spdfText?: string;
   spdfFont?: "helvetica" | "times" | "courier";
