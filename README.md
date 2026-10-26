@@ -22,9 +22,9 @@ to a third party.
 | API       | Node.js + Express + TypeScript, `pdf-lib` for in-process PDF manipulation (used for local dev / Docker) |
 | Converter | Python + FastAPI, `PyMuPDF` (page ops, rasterization, compression), `pdf2docx` (PDF→Word), LibreOffice headless (Word→PDF) |
 
-Every PDF operation is implemented **twice**: once in Node (`apps/api`, via
+Many classic PDF operations are implemented **twice**: once in Node (`apps/api`, via
 `pdf-lib`) for local development and Docker deployments, and once in Python
-(`services/converter`, via `PyMuPDF`) so the app can also run as a two-service
+(`services/converter`, via `PyMuPDF`). **Native editing of original PDF elements is implemented in Python only**; the Node API forwards those requests to the converter. This also allows a two-service
 (`web` + `converter`) deployment on platforms like Vercel that don't run a
 long-lived Node API. See [CONTRIBUTING.md](CONTRIBUTING.md) for what that
 means when you change a PDF endpoint.
@@ -59,22 +59,31 @@ processing sensitive documents.
 
 ## Getting started (local dev)
 
-Prerequisites: Node.js 22.13+ (or Node.js 24+), Python 3.11+, and LibreOffice for Word→PDF.
+Prerequisites: Node.js 22.13+ (or Node.js 24+), Python 3.11+, and LibreOffice for Word→PDF. Python commands below expect `python` to be available.
+
+Install dependencies in the repository root. Use a Python virtual environment so the converter packages do not modify your global Python installation.
+
+On macOS or Linux:
+
+```bash
+npm install --workspaces
+python -m venv .venv
+source .venv/bin/activate
+npm run converter:install
+cp apps/api/.env.example apps/api/.env
+```
+
+On Windows PowerShell:
 
 ```powershell
-# 1. Install JS dependencies (root + both apps, via npm workspaces)
 npm install --workspaces
-
-# 2. Set up the Python converter service
+python -m venv .venv
+.venv\Scripts\Activate.ps1
 npm run converter:install
-
-# 3. Copy env defaults
 Copy-Item apps/api/.env.example apps/api/.env
-
-# 4. Run everything (API + web) in one terminal, converter in another
-npm run converter:dev
-npm run dev
 ```
+
+In the first terminal, activate the virtual environment and start `npm run converter:dev`. In another terminal, start `npm run dev` for the frontend and Node API. The Python service **must** be available for selecting or changing existing PDF content.
 
 - Web: http://localhost:5173
 - API: http://localhost:4000
