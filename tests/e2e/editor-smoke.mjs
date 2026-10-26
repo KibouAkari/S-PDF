@@ -71,6 +71,20 @@ try {
     `Rendered PDF page must contain visible dark text, got ${JSON.stringify(pixels)}`);
   assert.ok(pixels.alpha >= 0 && pixels.alpha < 100,
     `Editor canvas must not paint opaque white over the PDF, got ${JSON.stringify(pixels)}`);
+  // Screenshot the actual composed page, not just the image element.
+  // This catches a CSS/canvas layer sitting opaque above a valid PDF image.
+  const documentBox = await pageImage.boundingBox();
+  assert.ok(documentBox && documentBox.width > 100);
+  await page.screenshot({
+    path: "/tmp/editor-visible-page.png",
+    clip: {
+      x: Math.max(0, Math.floor(documentBox.x)),
+      y: Math.max(0, Math.floor(documentBox.y)),
+      width: Math.floor(documentBox.width),
+      height: Math.floor(documentBox.height),
+    },
+  });
+
 
 
   const scale = rect.width / (420 * 1.5);
