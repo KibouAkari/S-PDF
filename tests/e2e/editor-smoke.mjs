@@ -37,6 +37,20 @@ try {
   await page.getByRole("button", { name: /Save & Download/i }).click();
   const download = await downloadEvent;
   await download.saveAs("/tmp/editor-export.pdf");
+
+  // Exercise basic editor commands with the real Fabric canvas mounted.
+  await page.getByRole("button", { name: "Add text", exact: true }).click();
+  await field.waitFor({ timeout: 5000 });
+  assert.equal(await field.inputValue(), "Double-click to edit");
+  await page.keyboard.press("Delete");
+  await field.waitFor({ state: "hidden", timeout: 5000 });
+  await page.getByRole("button", { name: /Undo/i }).click();
+  await page.getByRole("button", { name: /Ellipse/i }).click();
+  await page.keyboard.press("ControlOrMeta+c");
+  await page.keyboard.press("ControlOrMeta+v");
+  await page.getByRole("button", { name: /Line/i }).click();
+  await page.getByRole("button", { name: /Freehand marker/i }).click();
+  await page.getByRole("button", { name: /Stop marking/i }).click();
   assert.equal(browserErrors.length, 0, browserErrors.join("\n"));
   console.log("BROWSER EDIT SMOKE PASSED");
 } catch (error) {
