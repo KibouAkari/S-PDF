@@ -319,7 +319,7 @@ export function Editor() {
           if (request !== loadingPageRef.current || fabricRef.current !== canvas) return;
           for (const element of elements.slice(0, 600)) {
             const object = nativeObject(element);
-            if (element.type === "image") {
+            if (element.type === "image" || element.type === "shape") {
               const [x0, y0, x1, y1] = element.rect;
               const clip = document.createElement("canvas");
               clip.width = Math.max(1, Math.round((x1 - x0) * RENDER_SCALE));
