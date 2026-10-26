@@ -80,6 +80,22 @@ class NativeEditorTests(unittest.TestCase):
         self.assertTrue(any(b.x0 >= 300 and b.y0 >= 300 for b in boxes), boxes)
         self.assertFalse(any(b.x0 <= 220 and b.y0 <= 220 for b in boxes), boxes)
 
+    def test_move_native_raster_image_removes_old_placement(self):
+        pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 12, 12), False)
+        self.page.insert_image(fitz.Rect(40, 200, 130, 290), pixmap=pix)
+        images = [e for e in elements_for_page(self.page) if e["type"] == "image"]
+        self.assertEqual(len(images), 1)
+        apply_source_edits(self.doc, [{
+            "type": "source", "page": 0, "elementId": images[0]["id"],
+            "action": "move", "x": 170, "y": 320,
+            "width": 120, "height": 110,
+        }])
+        reopened = fitz.open(stream=self.doc.tobytes(garbage=4, deflate=True), filetype="pdf")
+        result = [e for e in elements_for_page(reopened[0]) if e["type"] == "image"]
+        self.assertTrue(any(e["rect"][0] > 160 and e["rect"][1] > 310 for e in result), result)
+        self.assertFalse(any(e["rect"][0] < 140 and e["rect"][1] < 300 for e in result), result)
+        reopened.close()
+
     def test_image_blocks_are_discoverable(self):
         # A second page with a raster image rather than glyphs mimics a scanned PDF.
         image_page = self.doc.new_page(width=420, height=600)
