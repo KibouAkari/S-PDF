@@ -52,6 +52,23 @@ class NativeEditorTests(unittest.TestCase):
         self.assertIn("New content", content)
         reopened.close()
 
+    def test_replacement_fits_a_tight_one_line_fabric_selection(self):
+        # Regression: imported one-line PDF text has a short bounding box.
+        # The editor must not reject a longer replacement solely because
+        # Fabric computes a smaller text box than MuPDF's font metrics.
+        element = self.source()
+        x0, y0, x1, y1 = element["rect"]
+        apply_source_edits(self.doc, [{
+            "type": "source", "page": 0, "elementId": element["id"],
+            "action": "replace", "x": x0, "y": y0,
+            "width": 190, "height": 16,
+            "text": "Edited in browser", "size": 14,
+            "font": "helvetica", "color": "#000000",
+        }])
+        text = self.page.get_text()
+        self.assertIn("Edited in browser", text)
+        self.assertNotIn("Original text", text)
+
     def test_delete_removes_source_text(self):
         element = self.source()
         apply_source_edits(self.doc, [{

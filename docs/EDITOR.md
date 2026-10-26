@@ -8,13 +8,17 @@ The editor supports **page overlays and experimental native content editing**. U
 
 ## How it works
 
-1. `pdf.js` renders each original PDF page to a canvas.
-2. Fabric.js displays and edits new overlay objects above the rendered background.
+1. `pdf.js` renders each original page into a dedicated page bitmap displayed underneath the editor. **The PDF page is never a Fabric background or an editable object.**
+2. Fabric.js renders a transparent editing layer above that bitmap, used for selection targets and new elements. A failure to extract native objects does not erase the visible PDF.
 3. The editor converts overlay positions to PDF coordinates. Native source edits use PyMuPDF's top-left page coordinates.
 4. `POST /api/pdf/edit` applies the overlays to the original PDF using either pdf-lib (Node API) or PyMuPDF (Python converter).
 5. The returned PDF is downloaded. Native source spans, image blocks and simple line/rectangle paths are imported as select targets. Source changes are forwarded to the Python backend for redaction and reconstruction.
 
-The Node and Python endpoints implement the same API but use different PDF engines. Every new feature should have equivalent behavior and tests in **both** backends.
+The Node and Python endpoints share a request contract but use different PDF engines. **Native source editing is only implemented in Python; the Node API forwards such requests to the converter.** Validate deployment parity when adding an overlay operation.
+
+## Editing controls
+
+The compact toolbar offers **Select**, **Text**, **Highlight**, **Draw**, **Shapes** and **Image**. Shapes is a dropdown for rectangles, ellipses and lines. **Pan** is separate from editing mode. Undo/redo, delete and zoom are in a small navigation bar. Font, size, weight, style and color appear only after selecting a compatible object. Double-click a native text span to edit it and use Save & Download to export the modified PDF.
 
 ## Known limitations
 

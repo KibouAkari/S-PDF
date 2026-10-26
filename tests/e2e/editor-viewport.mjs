@@ -12,6 +12,7 @@ try {
   const viewport = page.getByTestId("pdf-editor-viewport");
   await viewport.waitFor({ timeout: 30000 });
   await page.locator("canvas.upper-canvas").waitFor();
+  await page.getByTestId("pdf-page-image").waitFor();
   await page.waitForResponse((r) => r.url().includes("/api/pdf/content"), { timeout: 30000 }).catch(() => {});
   await page.getByRole("button", { name: "Fit page" }).click();
   await page.waitForTimeout(200);
@@ -26,6 +27,24 @@ try {
     `PDF clipped at right edge: page ${canvas.x + canvas.width}, workspace ${workspace.x + workspace.width}`);
   assert.ok(canvas.y >= workspace.y - tolerance, "PDF clipped at top");
   assert.ok(canvas.y + canvas.height <= workspace.y + workspace.height + tolerance, "PDF clipped at bottom");
+  const visiblePage = await page.getByTestId("pdf-page-image").evaluate((element) => {
+    const img = element;
+    const c = document.createElement("canvas");
+    c.width = img.naturalWidth;
+    c.height = img.naturalHeight;
+    const ctx = c.getContext("2d");
+    if (!ctx || !c.width) return { naturalWidth: 0, dark: 0 };
+    ctx.drawImage(img, 0, 0);
+    const data = ctx.getImageData(0, 0, c.width, Math.min(c.height, 300)).data;
+    let dark = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 120 && data[i + 1] < 120 && data[i + 2] < 120) dark++;
+    }
+    return { naturalWidth: c.width, dark };
+  });
+  assert.ok(visiblePage.naturalWidth >= 1000 && visiblePage.dark > 80,
+    `Page 1 must show real PDF text at both edges, got ${JSON.stringify(visiblePage)}`);
+
 
   await page.getByRole("button", { name: "Zoom in" }).click();
   await page.getByRole("button", { name: "Zoom out" }).click();
@@ -34,8 +53,9 @@ try {
   await page.getByRole("button", { name: "Select", exact: true }).click();
 
   await page.getByRole("button", { name: "Page 2" }).click();
+  await page.getByTestId("pdf-page-image").waitFor();
   await page.getByText(/Page 2 of 2/).waitFor();
-  await page.getByRole("button", { name: "Add text", exact: true }).click();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
   await page.getByLabel("Text", { exact: true }).fill("Annotation on second page");
   await page.getByRole("button", { name: "Page 1" }).click();
   await page.getByText(/Page 1 of 2/).waitFor();

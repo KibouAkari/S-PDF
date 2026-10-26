@@ -4,6 +4,7 @@ import { chromium } from "playwright";
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ acceptDownloads: true, viewport: { width: 1420, height: 920 } });
 const diagnostics = [];
+let editGeometry = [];
 
 try {
   const browserErrors = [];
@@ -11,6 +12,21 @@ try {
   page.on("console", (message) => { if (message.type() === "error") diagnostics.push("CONSOLE: " + message.text()); });
   page.on("response", (response) => { if (response.url().includes("/api/")) diagnostics.push("API: " + response.status() + " " + response.url()); });
   page.on("requestfailed", (request) => diagnostics.push("FAILED: " + request.url() + " " + request.failure()?.errorText));
+  page.on("request", (request) => {
+    if (!request.url().includes("/api/pdf/edit")) return;
+    const body = request.postData() || "";
+    const marker = 'name="objects"\\r\\n\\r\\n';
+    const at = body.indexOf(marker);
+    if (at < 0) return;
+    try {
+      const serialized = body.slice(at + marker.length).split("\\r\\n--")[0];
+      editGeometry = JSON.parse(serialized).map((o) => ({
+        type: o.type, action: o.action, page: o.page,
+        x: o.x, y: o.y, width: o.width, height: o.height, size: o.size,
+        textLength: o.text?.length,
+      }));
+    } catch { /* keep test output free from PDF file data */ }
+  });
   await page.goto("http://127.0.0.1:5173/tools/editor", { waitUntil: "networkidle" });
   const input = page.locator('input[type="file"]').first();
   await input.setInputFiles("/tmp/editor-fixture.pdf");
@@ -25,6 +41,51 @@ try {
   const rect = await upper.boundingBox();
   assert.ok(rect, "Fabric canvas is visible");
   assert.ok(rect.width > 100 && rect.height > 100, "Fabric canvas has nonzero size");
+  // Catch the actual production regression: a blank white full-page editor
+  // with a correct thumbnail. Geometry checks alone cannot catch this.
+  const pageImage = page.getByTestId("pdf-page-image");
+  await pageImage.waitFor({ timeout: 30000 });
+  const pixels = await pageImage.evaluate((img) => {
+    const picture = img;
+    if (!picture.complete || !picture.naturalWidth) return { ready: false, dark: 0, alpha: 0 };
+    const sample = document.createElement("canvas");
+    sample.width = picture.naturalWidth;
+    sample.height = picture.naturalHeight;
+    const ctx = sample.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return { ready: false, dark: 0, alpha: 0 };
+    ctx.drawImage(picture, 0, 0);
+    const rgba = ctx.getImageData(0, 0, sample.width, Math.min(260, sample.height)).data;
+    let dark = 0;
+    for (let i = 0; i < rgba.length; i += 4) {
+      if (rgba[i] < 120 && rgba[i + 1] < 120 && rgba[i + 2] < 120) dark++;
+    }
+    const overlay = document.querySelector("canvas.lower-canvas");
+    let alpha = -1;
+    if (overlay) {
+      const context = overlay.getContext("2d");
+      alpha = context?.getImageData(2, 2, 1, 1).data[3] ?? -1;
+    }
+    return { ready: true, dark, alpha };
+  });
+  assert.ok(pixels.ready && pixels.dark > 80,
+    `Rendered PDF page must contain visible dark text, got ${JSON.stringify(pixels)}`);
+  assert.ok(pixels.alpha >= 0 && pixels.alpha < 100,
+    `Editor canvas must not paint opaque white over the PDF, got ${JSON.stringify(pixels)}`);
+  // Screenshot the actual composed page, not just the image element.
+  // This catches a CSS/canvas layer sitting opaque above a valid PDF image.
+  const documentBox = await pageImage.boundingBox();
+  assert.ok(documentBox && documentBox.width > 100);
+  await page.screenshot({
+    path: "/tmp/editor-visible-page.png",
+    clip: {
+      x: Math.max(0, Math.floor(documentBox.x)),
+      y: Math.max(0, Math.floor(documentBox.y)),
+      width: Math.floor(documentBox.width),
+      height: Math.floor(documentBox.height),
+    },
+  });
+
+
 
   const scale = rect.width / (420 * 1.5);
   // The fixture puts text at point (70,110); top of its glyph bbox is near 95pt.
@@ -34,23 +95,29 @@ try {
   assert.equal(await field.inputValue(), "Test document");
   await field.fill("Edited in browser");
   const downloadEvent = page.waitForEvent("download", { timeout: 30000 });
+  const editResponse = page.waitForResponse((res) => res.url().includes("/api/pdf/edit"), { timeout: 30000 });
   await page.getByRole("button", { name: /Save & Download/i }).click();
+  const response = await editResponse;
+  if (!response.ok()) {
+    console.error("EDIT GEOMETRY:", JSON.stringify(editGeometry));
+    throw new Error(`PDF export returned HTTP ${response.status()}`);
+  }
   const download = await downloadEvent;
   await download.saveAs("/tmp/editor-export.pdf");
 
   // Exercise basic editor commands with the real Fabric canvas mounted.
-  await page.getByRole("button", { name: "Add text", exact: true }).click();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
   await field.waitFor({ timeout: 5000 });
   assert.equal(await field.inputValue(), "Double-click to edit");
   await page.keyboard.press("Delete");
   await field.waitFor({ state: "hidden", timeout: 5000 });
   await page.getByRole("button", { name: /Undo/i }).click();
-  await page.getByRole("button", { name: /Ellipse/i }).click();
+  await page.getByRole("combobox", { name: "Add shape" }).selectOption("ellipse");
   await page.keyboard.press("ControlOrMeta+c");
   await page.keyboard.press("ControlOrMeta+v");
-  await page.getByRole("button", { name: /Line/i }).click();
-  await page.getByRole("button", { name: /Freehand marker/i }).click();
-  await page.getByRole("button", { name: /Stop marking/i }).click();
+  await page.getByRole("combobox", { name: "Add shape" }).selectOption("line");
+  await page.getByRole("button", { name: "Draw" }).click();
+  await page.getByRole("button", { name: "Stop drawing" }).click();
   assert.equal(browserErrors.length, 0, browserErrors.join("\n"));
   console.log("BROWSER EDIT SMOKE PASSED");
 } catch (error) {

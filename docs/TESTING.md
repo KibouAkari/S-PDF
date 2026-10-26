@@ -6,7 +6,8 @@ The GitHub Actions CI workflow performs:
 
 - Node and web TypeScript builds.
 - Python converter imports and Python native editing/HTTP contract tests, including source text, raster images and vector rectangles.
-- A dedicated Chromium browser smoke workflow that opens a generated PDF, selects original text, changes and downloads it, then reopens the PDF with PyMuPDF to verify content replacement.
+- A dedicated Chromium browser workflow opens a generated PDF, confirms PDF page image pixels contain actual dark text and the Fabric layer is not opaque, edits and downloads PDF content, then reopens it with PyMuPDF to verify replacement.
+- A wide two-page PDF regression tests full-page fit, zoom, pan, page navigation and edits retained during export. A screenshot of the **composited** page is inspected independently, so a visible blank sheet fails CI even if thumbnails work.
 - Native editing tests with generated PDFs. They verify that text is discovered, replaced, moved, and removed from PDF extraction; source IDs are validated; embedded images can be discovered.
 
 Run the native tests locally:
@@ -35,6 +36,8 @@ Before merging a major editor update, test in Chromium and Firefox with the Pyth
 - Add text, transparent highlights, rectangles, ellipses, lines, image overlays and freehand strokes.
 - Delete, copy, cut, paste and undo/redo after changing page content.
 - Verify saved outputs by reopening them and comparing with the original.
+- Verify PDF content appears on the **main editing page** (not only in thumbnails), including a scanned full-page image; verify the editing layer stays transparent before the first change.
+- Verify longer replacement text has enough typesetting height or fails with a clear error, never a silently corrupted output.
 - Test regular text PDFs, scanned PDFs, rotated pages, complex fonts and vector-heavy documents.
 - Verify error messages for invalid PDFs, fonts that cannot encode content and text that does not fit.
 

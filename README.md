@@ -44,7 +44,7 @@ processing sensitive documents.
 - [Licensing and third-party obligations](docs/LICENSING.md)
 - [Automated and manual testing](docs/TESTING.md)
 
-**Editor status:** Native editing is experimental: text spans, embedded raster images and simple line/rectangle paths can be moved, changed or removed. Complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
+**Editor status:** Native editing is experimental: text spans, embedded raster images and simple line/rectangle paths can be moved, changed or removed. The editor displays the PDF as a dedicated read-only page layer with transparent controls above it, and groups editing tools into a compact toolbar. Complex vector graphics, OCR text and lossless layout editing are not supported. See the [native editing guide](docs/NATIVE_EDITING.md) and [test matrix](docs/TESTING.md).
 
 ## Features
 
