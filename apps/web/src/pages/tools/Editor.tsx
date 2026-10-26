@@ -164,6 +164,46 @@ async function loadObjectByType(data: Record<string, unknown>): Promise<FabricOb
   return null;
 }
 
+/** Show a truthful preview when changing a native element. The backend performs
+ * actual content-stream removal on export; this mask only improves the UI preview. */
+function previewNativeChange(canvas: Canvas, object: Editable): Editable {
+  if (object.spdfType !== "source" || !object.spdfOriginalRect) return object;
+  if (!canvas.getObjects().some((item) => (item as Editable).spdfType === "preview-mask" &&
+      (item as Editable).spdfId === object.spdfId)) {
+    const [x0, y0, x1, y1] = object.spdfOriginalRect;
+    const cover = new Rect({
+      left: x0 * RENDER_SCALE, top: y0 * RENDER_SCALE,
+      width: (x1 - x0) * RENDER_SCALE, height: (y1 - y0) * RENDER_SCALE,
+      fill: "#ffffff", selectable: false, evented: false,
+    }) as Editable;
+    cover.spdfType = "preview-mask";
+    cover.spdfId = object.spdfId;
+    canvas.insertAt(0, cover);
+  }
+  if (object.spdfKind !== "text" || object instanceof Textbox) return object;
+  const replacement = new Textbox(object.spdfText || "", {
+    left: object.left, top: object.top,
+    width: Math.max(90, object.getScaledWidth()),
+    fontSize: (object.spdfSize || 12) * RENDER_SCALE,
+    fill: object.spdfColor || "#000000",
+    backgroundColor: "#ffffff",
+    fontFamily: object.spdfFont === "times" ? "Times New Roman" :
+      object.spdfFont === "courier" ? "Courier New" : "Arial",
+  }) as Editable;
+  Object.assign(replacement, {
+    spdfType: "source", spdfKind: object.spdfKind,
+    spdfId: object.spdfId, spdfOriginalRect: object.spdfOriginalRect,
+    spdfText: object.spdfText, spdfSize: object.spdfSize,
+    spdfColor: object.spdfColor, spdfFont: object.spdfFont,
+    spdfBold: object.spdfBold, spdfItalic: object.spdfItalic,
+    spdfChanged: true, spdfAction: object.spdfAction || "replace",
+  });
+  canvas.remove(object);
+  canvas.add(replacement);
+  canvas.setActiveObject(replacement);
+  return replacement;
+}
+
 export function Editor() {
   const [file, setFile] = useState<File | null>(null);
   const [pageCount, setPageCount] = useState(0);
@@ -225,11 +265,14 @@ export function Editor() {
     const canvas = fabricRef.current;
     if (!canvas || !selected) return;
     selected.set(patch);
-    if ((selected as Editable).spdfType === "source") {
-      (selected as Editable).spdfChanged = true;
-      (selected as Editable).spdfAction = "replace";
+    let updated = selected;
+    if (selected.spdfType === "source") {
+      selected.spdfChanged = true;
+      selected.spdfAction = "replace";
+      updated = previewNativeChange(canvas, selected);
+      setSelected(updated);
     }
-    selected.setCoords();
+    updated.setCoords();
     canvas.requestRenderAll();
     setSelectionVersion((value) => value + 1);
     recordHistory();
@@ -339,6 +382,7 @@ export function Editor() {
         if (object?.spdfType === "source") {
           object.spdfChanged = true;
           if (!object.spdfAction || object.spdfAction === "move") object.spdfAction = "move";
+          previewNativeChange(canvas, object);
         }
         selection();
         recordHistory();
@@ -355,28 +399,15 @@ export function Editor() {
         (path as Editable).spdfType = "draw";
         recordHistory();
       });
-      canvas.on("mouse:dblclick", async ({ target }) => {
+      canvas.on("mouse:dblclick", ({ target }) => {
         const object = target as Editable | undefined;
-        if (!object || object.spdfType !== "source" || object.spdfKind !== "text" || object instanceof Textbox) return;
-        const text = new Textbox(object.spdfText ?? "", {
-          left: object.left, top: object.top,
-          width: Math.max(100, object.getScaledWidth()),
-          fontSize: (object.spdfSize || 12) * RENDER_SCALE,
-          fill: object.spdfColor || "#000000", backgroundColor: "#ffffff",
-          fontFamily: "Arial",
-        }) as Editable;
-        Object.assign(text, {
-          spdfType: "source", spdfId: object.spdfId, spdfKind: object.spdfKind,
-          spdfOriginalRect: object.spdfOriginalRect, spdfText: object.spdfText,
-          spdfFont: object.spdfFont, spdfSize: object.spdfSize,
-          spdfColor: object.spdfColor, spdfChanged: true, spdfAction: "replace",
-        });
-        canvas.remove(object);
-        canvas.add(text);
-        canvas.setActiveObject(text);
-        canvas.requestRenderAll();
-        (text as Textbox).enterEditing();
+        if (!object || object.spdfType !== "source" || object.spdfKind !== "text") return;
+        object.spdfChanged = true;
+        object.spdfAction = "replace";
+        const visible = previewNativeChange(canvas, object);
+        if (visible instanceof Textbox) visible.enterEditing();
         selection();
+        canvas.requestRenderAll();
         recordHistory();
       });
     } else if (fabricRef.current) {
