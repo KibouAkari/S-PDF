@@ -60,6 +60,18 @@ jobs:
           node tests/e2e/editor-smoke.mjs
           python - <<'PY'
           import fitz
+          screenshot = fitz.Pixmap("/tmp/editor-visible-page.png")
+          samples = screenshot.samples
+          channels = screenshot.n
+          dark = sum(
+              1 for index in range(0, len(samples), channels)
+              if samples[index] < 130 and samples[index + 1] < 130 and samples[index + 2] < 130
+          )
+          assert dark > 100, f"PDF editor screenshot is blank or covered (dark pixels: {dark})"
+          print(f"VISIBLE PDF SCREENSHOT VALIDATED: {dark} dark pixels")
+          PY
+          python - <<'PY'
+          import fitz
           doc = fitz.open()
           first = doc.new_page(width=1050, height=1480)
           first.insert_text((35, 115), "LEFT EDGE", fontsize=18)
@@ -98,6 +110,7 @@ jobs:
           name: editor-smoke-diagnostics
           path: |
             /tmp/editor-failure.png
+            /tmp/editor-visible-page.png
             /tmp/editor-viewport-failure.png
             /tmp/converter.log
             /tmp/api.log
