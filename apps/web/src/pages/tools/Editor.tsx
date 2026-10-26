@@ -464,6 +464,7 @@ export function Editor() {
     canvas.add(tb);
     canvas.setActiveObject(tb);
     canvas.requestRenderAll();
+    recordHistory();
   }
 
   function addRect() {
@@ -474,6 +475,7 @@ export function Editor() {
     canvas.add(rect);
     canvas.setActiveObject(rect);
     canvas.requestRenderAll();
+    recordHistory();
   }
 
   function addHighlight() {
@@ -504,13 +506,124 @@ export function Editor() {
     canvas.add(img);
     canvas.setActiveObject(img);
     canvas.requestRenderAll();
+    recordHistory();
   }
 
   function deleteSelected() {
     const canvas = fabricRef.current;
     const active = canvas?.getActiveObject();
-    if (canvas && active) { canvas.remove(active); canvas.requestRenderAll(); }
+    if (!canvas || !active) return;
+    const object = active as Editable;
+    if (object.spdfType === "source" && object.spdfOriginalRect) {
+      object.spdfChanged = true;
+      object.spdfAction = "delete";
+      object.visible = false;
+      object.selectable = false;
+      const [x0, y0, x1, y1] = object.spdfOriginalRect;
+      const mask = new Rect({
+        left: x0 * RENDER_SCALE, top: y0 * RENDER_SCALE,
+        width: (x1 - x0) * RENDER_SCALE, height: (y1 - y0) * RENDER_SCALE,
+        fill: "#ffffff", selectable: false, evented: false,
+      }) as Editable;
+      mask.spdfType = "preview-mask";
+      canvas.add(mask);
+    } else {
+      canvas.remove(object);
+    }
+    canvas.discardActiveObject();
+    setSelected(null);
+    canvas.requestRenderAll();
+    recordHistory();
   }
+
+  function addShape(kind: "ellipse" | "line") {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    const shape = kind === "ellipse"
+      ? new Ellipse({ left: 70, top: 80, rx: 80, ry: 45, fill: "rgba(0,0,0,0)", stroke: "#14b8a6", strokeWidth: 3 })
+      : new Line([70, 70, 240, 73], { stroke: "#14b8a6", strokeWidth: 3 });
+    (shape as Editable).spdfType = "shape";
+    canvas.add(shape);
+    canvas.setActiveObject(shape);
+    canvas.requestRenderAll();
+    recordHistory();
+  }
+
+  function toggleDrawing() {
+    setPanMode(false);
+    setDrawingMode((enabled) => !enabled);
+  }
+
+  function copySelected(cut = false) {
+    const object = fabricRef.current?.getActiveObject() as Editable | undefined;
+    if (!object) return;
+    if (object.spdfType === "source") {
+      if (object.spdfKind === "text") {
+        clipboardRef.current = {
+          type: "Textbox", spdfType: "text", text: object instanceof Textbox ? object.text : object.spdfText,
+          left: object.left, top: object.top, width: Math.max(120, object.getScaledWidth()),
+          fontSize: (object.spdfSize || 12) * RENDER_SCALE,
+          fill: object.spdfColor || "#000000",
+        };
+      } else if (object.spdfSrc) {
+        clipboardRef.current = {
+          type: "Image", spdfType: "image", spdfSrc: object.spdfSrc,
+          left: object.left, top: object.top,
+        };
+      }
+    } else {
+      clipboardRef.current = object.toObject([...SERIALIZED_PROPS]) as Record<string, unknown>;
+    }
+    if (cut) deleteSelected();
+  }
+
+  async function pasteSelected() {
+    const canvas = fabricRef.current;
+    if (!canvas || !clipboardRef.current) return;
+    const data = { ...clipboardRef.current, left: Number(clipboardRef.current.left ?? 60) + 24,
+      top: Number(clipboardRef.current.top ?? 60) + 24 };
+    clipboardRef.current = data;
+    const object = await loadObjectByType(data);
+    if (!object) return;
+    canvas.add(object);
+    canvas.setActiveObject(object);
+    canvas.requestRenderAll();
+    recordHistory();
+  }
+
+  useEffect(() => {
+    const listener = (event: KeyboardEvent) => {
+      const el = event.target as HTMLElement;
+      if (el?.closest("input, textarea, select, [contenteditable=true]")) return;
+      if (fabricRef.current?.getActiveObject() instanceof Textbox &&
+          (fabricRef.current.getActiveObject() as Textbox).isEditing) return;
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && ["c", "x", "v", "z", "y"].includes(event.key.toLowerCase())) {
+        event.preventDefault();
+        if (event.key.toLowerCase() === "c") copySelected();
+        if (event.key.toLowerCase() === "x") copySelected(true);
+        if (event.key.toLowerCase() === "v") void pasteSelected();
+        if (event.key.toLowerCase() === "z") void stepHistory(event.shiftKey ? 1 : -1);
+        if (event.key.toLowerCase() === "y") void stepHistory(1);
+      } else if (event.key === "Delete" || event.key === "Backspace") {
+        if (fabricRef.current?.getActiveObject()) { event.preventDefault(); deleteSelected(); }
+      }
+    };
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
+  });
+
+  useEffect(() => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+    canvas.isDrawingMode = drawingMode && !panMode;
+    if (canvas.isDrawingMode) {
+      const brush = new PencilBrush(canvas);
+      brush.color = "rgba(250,204,21,0.35)";
+      brush.width = 18;
+      canvas.freeDrawingBrush = brush;
+    }
+  }, [drawingMode, panMode, currentPage]);
 
   async function handleSave() {
     if (!file || !fabricRef.current) return;
@@ -549,11 +662,11 @@ export function Editor() {
     const canvas = fabricRef.current;
     if (!canvas) return;
     canvas.selection = !panMode;
-    canvas.skipTargetFind = panMode;
+    canvas.skipTargetFind = panMode || drawingMode;
     canvas.forEachObject((obj) => { obj.selectable = !panMode; obj.evented = !panMode; });
     canvas.discardActiveObject();
     canvas.requestRenderAll();
-  }, [panMode, currentPage]);
+  }, [panMode, drawingMode, currentPage]);
 
   if (!file) {
     return (
@@ -578,7 +691,10 @@ export function Editor() {
       <div className="mb-4 flex flex-wrap gap-2">
         <Button variant="secondary" size="sm" onClick={addText}><Type className="h-4 w-4" /> Add text</Button>
         <Button variant="secondary" size="sm" onClick={addHighlight}><Highlighter className="h-4 w-4" /> Highlight</Button>
-        <Button variant="secondary" size="sm" onClick={addRect}><Square className="h-4 w-4" /> Add white box</Button>
+        <Button variant="secondary" size="sm" onClick={addRect}><Square className="h-4 w-4" /> Rectangle</Button>
+        <Button variant="secondary" size="sm" onClick={() => addShape("ellipse")}><Circle className="h-4 w-4" /> Ellipse</Button>
+        <Button variant="secondary" size="sm" onClick={() => addShape("line")}><Minus className="h-4 w-4" /> Line</Button>
+        <Button variant="secondary" size="sm" onClick={toggleDrawing}><PenLine className="h-4 w-4" /> {drawingMode ? "Stop marking" : "Freehand marker"}</Button>
         <label>
           <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => e.target.files && addImage(Array.from(e.target.files))} />
           <span className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-xl border border-ink-600 bg-ink-800 px-3 text-sm text-ink-50 hover:bg-ink-700">
@@ -589,6 +705,8 @@ export function Editor() {
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2" role="toolbar" aria-label="PDF viewport controls">
+        <Button size="sm" variant="secondary" onClick={() => void stepHistory(-1)}><Undo2 className="h-4 w-4" /> Undo</Button>
+        <Button size="sm" variant="secondary" onClick={() => void stepHistory(1)}><Redo2 className="h-4 w-4" /> Redo</Button>
         <Button size="sm" variant="secondary" onClick={() => setPanMode(false)}><MousePointer2 className="h-4 w-4" /> Select</Button>
         <Button size="sm" variant="secondary" onClick={() => setPanMode(true)}><Hand className="h-4 w-4" /> Pan {panMode ? "✓" : ""}</Button>
         <Button size="sm" variant="secondary" onClick={() => setZoom((v) => Math.max(0.2, +(v - 0.15).toFixed(2)))}><ZoomOut className="h-4 w-4" /> Zoom out</Button>
@@ -634,6 +752,7 @@ export function Editor() {
         </Card>
       </div>
 
+      {nativeWarning && <p role="status" className="mt-3 rounded-md border border-amber-500/40 p-2 text-sm text-amber-300">{nativeWarning}</p>}
       <p className="mt-2 text-xs text-ink-400">Page {currentPage + 1} of {pageCount}. Use Select to move added objects, Pan to move around the page, and Fit page to see the whole document. Scanned text is part of an image and cannot yet be edited directly.</p>
 
       <div className="mt-4">
