@@ -183,7 +183,7 @@ function previewNativeChange(canvas: Canvas, object: Editable): Editable {
   if (object.spdfKind !== "text" || object instanceof Textbox) return object;
   const replacement = new Textbox(object.spdfText || "", {
     left: object.left, top: object.top,
-    width: Math.max(90, object.getScaledWidth()),
+    width: Math.max(200, object.getScaledWidth()),
     fontSize: (object.spdfSize || 12) * RENDER_SCALE,
     fill: object.spdfColor || "#000000",
     backgroundColor: "#ffffff",
