@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Canvas, Textbox, Rect, Ellipse, Line, PencilBrush, FabricImage, type FabricObject } from "fabric";
-import { Type, Square, Highlighter, ImagePlus, Trash2, Download, ZoomIn, ZoomOut, Maximize2, Hand, MousePointer2, Circle, Minus, PenLine, Undo2, Redo2, Bold, Italic } from "lucide-react";
+import { Type, Highlighter, ImagePlus, Trash2, Download, ZoomIn, ZoomOut, Maximize2, Hand, MousePointer2, PenLine, Undo2, Redo2, Bold, Italic } from "lucide-react";
 import { Dropzone } from "../../components/Dropzone";
 import { StatusBanner } from "../../components/StatusBanner";
 import { ToolHeader } from "../../components/ToolHeader";
