@@ -330,7 +330,7 @@ export function Editor() {
               const image = await FabricImage.fromURL(src);
               image.set({ left: object.left, top: object.top, scaleX: 1, scaleY: 1 });
               Object.assign(image, { spdfType: "source", spdfSrc: src, spdfId: object.spdfId,
-                spdfKind: "image", spdfOriginalRect: element.rect, spdfChanged: false });
+                spdfKind: element.type, spdfOriginalRect: element.rect, spdfChanged: false, spdfColor: element.color || "#000000" });
               canvas.add(image);
             } else {
               canvas.add(object);
