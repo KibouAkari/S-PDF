@@ -25,6 +25,18 @@ npm run converter:dev   # terminal 1
 npm run dev              # terminal 2 (API + web)
 ```
 
+## Editor architecture and testing
+
+Native source edits are handled by `services/converter/editor_native.py` through the Python converter API, including when the web app uses the Node API. Overlays remain supported by both PDF engines. Native content extraction and destructive changes are **not** available from `pdf-lib` alone.
+
+Before opening a PR that changes PDF editing, run both builds, Python unit/HTTP contract tests, and Chromium browser workflow. Add fixture PDFs for every corrected regression. Include screenshots only when they accurately reflect the current UI. Read [Native Editing](docs/NATIVE_EDITING.md), [Testing](docs/TESTING.md), and [Licensing](docs/LICENSING.md).
+
+### Python tests
+
+```bash
+PYTHONPATH=services/converter python -m unittest discover -s services/converter/tests -v
+```
+
 ## Before opening a pull request
 
 - **Type-check both TypeScript apps:**
