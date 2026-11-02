@@ -24,7 +24,7 @@
     "@types/express": "^5.0.0",
     "@types/morgan": "^1.9.9",
     "@types/multer": "^1.4.12",
-    "@types/node": "^22.9.0",
+    "@types/node": "^26.6.6",
     "@types/archiver": "^6.0.2",
     "tsx": "^4.19.2",
     "typescript": "^7.0.2"
