@@ -1,0 +1,64 @@
+name: S-PDF public live acceptance
+
+on:
+  pull_request:
+    paths:
+      - "tests/live_api_acceptance.py"
+      - "tests/live_browser_acceptance.mjs"
+      - "tests/make_live_browser_fixtures.py"
+      - ".github/workflows/live-acceptance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-acceptance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - name: Install test-only libraries
+        run: python -m pip install httpx==0.28.1 PyMuPDF==2.1 Pillow==13.0.0 python-docx==1.2.0
+      - name: Test production with synthetic, non-sensitive fixtures
+        run: python tests/live_api_acceptance.py --base https://simi-pdf.vercel.app
+
+  live-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install Python fixture dependencies
+        run: python -m pip install PyMuPDF==2.1 Pillow==13.0.0 python-docx==1.2.0
+      - name: Generate synthetic browser fixtures
+        run: python tests/make_live_browser_fixtures.py
+      - name: Install browser runner
+        run: |
+          npm ci
+          npm install --no-save --no-package-lock playwright@1.55.0
+          npx playwright install chromium
+      - name: Browser upload, convert and download acceptance
+        run: node tests/live_browser_acceptance.mjs
+        env:
+          SPDF_BASE_URL: https://simi-pdf.vercel.app
+      - name: Upload failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s-pdf-browser-diagnostics
+          path: /tmp/s-pdf-browser-failures/*.png
+          if-no-files-found: ignore
