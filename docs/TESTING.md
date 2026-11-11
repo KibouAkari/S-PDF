@@ -5,7 +5,7 @@
 The GitHub Actions CI workflow performs:
 
 - Node and web TypeScript builds.
-- Python converter imports and Python native editing/HTTP contract tests, including source text, raster images and vector rectangles.
+- Python converter imports, native editor contract tests, and the PDF tool endpoint suite covering merge, split, PNG/JPEG/WEBP, watermarking, numbering, compression and upload validation.
 - A dedicated Chromium browser workflow opens a generated PDF, confirms PDF page image pixels contain actual dark text and the Fabric layer is not opaque, edits and downloads PDF content, then reopens it with PyMuPDF to verify replacement.
 - A wide two-page PDF regression tests full-page fit, zoom, pan, page navigation and edits retained during export. A screenshot of the **composited** page is inspected independently, so a visible blank sheet fails CI even if thumbnails work.
 - Native editing tests with generated PDFs. They verify that text is discovered, replaced, moved, and removed from PDF extraction; source IDs are validated; embedded images can be discovered.
@@ -46,3 +46,8 @@ Before merging a major editor update, test in Chromium and Firefox with the Pyth
 ## Security checks before deployment
 
 Reject excessive uploads by measured bytes, isolate converter processes, cap computation time, scan dependencies, and check for image/XML/archive decompression abuse. Full production hardening is an open task.
+
+For production deploys also follow the real-container Office conversion and
+browser acceptance matrix in [DEPLOY_VERCEL.md](DEPLOY_VERCEL.md). A green
+unit suite alone does not verify that the Vercel project selected the correct
+runtime or that complex customer files retain layout.
