@@ -18,3 +18,14 @@ async def read_upload(file: UploadFile, *, max_bytes: int | None = None) -> byte
     if len(data) > limit:
         raise HTTPException(413, "File or total upload size exceeded")
     return data
+
+
+async def read_many(files: list[UploadFile]) -> list[bytes]:
+    """Apply the same total cap even when transfer encoding is chunked."""
+    remaining = MAX_UPLOAD_BYTES
+    chunks: list[bytes] = []
+    for file in files:
+        data = await read_upload(file, max_bytes=remaining)
+        chunks.append(data)
+        remaining -= len(data)
+    return chunks
