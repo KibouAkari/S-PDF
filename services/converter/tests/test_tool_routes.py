@@ -165,7 +165,7 @@ class PdfToolRoutesTests(unittest.TestCase):
             self.assertEqual(len(images), 1)
             data = doc.extract_image(images[0][0])
             self.assertTrue(data["image"])
-            self.assertLessEqual(data["width"], 2200)
+            self.assertLessEqual(max(data["width"], data["height"]), 1400)
             self.assertTrue(doc[0].get_pixmap().samples)
 
     def test_word_to_pdf_reports_missing_engine_without_leaking_paths(self):
