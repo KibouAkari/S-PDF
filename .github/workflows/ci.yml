@@ -30,3 +30,46 @@ jobs:
       - run: pip install -r services/converter/requirements-test.txt
       - run: python -c "import sys; sys.path.insert(0, 'services/converter'); import main"
       - run: PYTHONPATH=services/converter python -m unittest discover -s services/converter/tests -v
+
+
+  converter-container:
+    name: Container smoke test (real LibreOffice)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build Vercel converter image
+        run: docker build -f services/converter/Dockerfile.vercel -t s-pdf-converter:ci services/converter
+      - name: Check live API and Word to PDF
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          docker run --rm -d --name s-pdf-converter-ci \
+            -p 127.0.0.1:18081:80 s-pdf-converter:ci
+          trap 'docker rm -f s-pdf-converter-ci >/dev/null 2>&1 || true' EXIT
+
+          ready=false
+          for attempt in $(seq 1 90); do
+            if curl --silent --fail http://127.0.0.1:18081/api/health \
+              | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["status"]=="ok" and d["libreoffice"] and d["wordToPdf"]=="available"' \
+              2>/dev/null; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" != true ]; then
+            docker logs s-pdf-converter-ci
+            exit 1
+          fi
+
+          docker exec s-pdf-converter-ci python -c \
+            'from docx import Document; d=Document(); d.add_paragraph("CI Office conversion works"); d.save("/tmp/s-pdf-smoke.docx")'
+          docker cp s-pdf-converter-ci:/tmp/s-pdf-smoke.docx "$RUNNER_TEMP/s-pdf-smoke.docx"
+          curl --fail-with-body --silent --show-error \
+            -F "file=@$RUNNER_TEMP/s-pdf-smoke.docx" \
+            http://127.0.0.1:18081/api/convert/word-to-pdf \
+            --output "$RUNNER_TEMP/s-pdf-result.pdf"
+          python3 -c 'import pathlib,sys; p=pathlib.Path(sys.argv[1]); assert p.read_bytes().startswith(b"%PDF-"), "Invalid PDF output"' "$RUNNER_TEMP/s-pdf-result.pdf"
+          docker cp "$RUNNER_TEMP/s-pdf-result.pdf" s-pdf-converter-ci:/tmp/s-pdf-result.pdf
+          docker exec s-pdf-converter-ci python -c \
+            'import fitz; d=fitz.open("/tmp/s-pdf-result.pdf"); assert "CI Office conversion works" in d[0].get_text(); d.close()'

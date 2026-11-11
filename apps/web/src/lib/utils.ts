@@ -26,8 +26,18 @@ export function formatBytes(bytes: number): string {
 
 export function extractErrorMessage(err: unknown): string {
   if (err && typeof err === "object" && "response" in err) {
-    const response = (err as { response?: { data?: { error?: string } } }).response;
-    if (response?.data?.error) return response.data.error;
+    const response = (err as {
+      response?: { status?: number; data?: { error?: string; detail?: string | { msg?: string }[] } };
+    }).response;
+    const data = response?.data;
+    if (typeof data?.error === "string" && data.error) return data.error;
+    if (typeof data?.detail === "string" && data.detail) return data.detail;
+    if (Array.isArray(data?.detail) && data.detail.length) {
+      return data.detail.map((issue) => issue.msg).filter(Boolean).join("; ") || "Invalid input.";
+    }
+    if (response?.status === 413) return "This file is too large for the server.";
+    if (response?.status === 503) return "The conversion service is unavailable. Please try again later.";
+    if (response?.status === 504) return "Conversion timed out. Try a smaller document.";
   }
   if (err instanceof Error) return err.message;
   return "Something went wrong. Please try again.";

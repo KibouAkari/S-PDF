@@ -5,6 +5,20 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Added a LibreOffice-equipped Vercel container deployment option for Word to PDF; the previous Python serverless route returned HTTP 503 when `soffice` was absent.
+- Isolated LibreOffice profiles per request, moved its blocking subprocess off the FastAPI event loop, and made conversion failures easier to understand.
+- Fixed PDF compression image replacement to update PDF image dictionaries correctly and avoid returning larger files.
+- Added WEBP decoding for Images to PDF while preserving PNG/JPEG source streams and transparency.
+- Enforced measured upload-size limits in converter routes, including multipart requests without `Content-Length`.
+- Display FastAPI validation and service-error details in the existing frontend status banner.
+
+### Test coverage
+
+- Added HTTP regression checks for standard PDF tools and conversion failures, with real Office conversion exercised when LibreOffice is available.
+- Added [Vercel deployment and acceptance checklist](docs/DEPLOY_VERCEL.md). The production website remains unverified until a preview and deployment logs can be inspected.
+
 ### Changed
 
 - Native PDF editing prototype for existing text spans and embedded images now removes and reconstructs selected source objects during export, rather than only overlaying new content.

@@ -13,11 +13,13 @@ import json
 import re
 import zipfile
 
+from PIL import Image
 import fitz  # PyMuPDF
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from editor_native import FONT_NAMES, elements_for_page, apply_source_edits
+from upload_limits import read_upload, read_many
 
 router = APIRouter(prefix="/api/pdf", tags=["pdf"])
 
@@ -53,6 +55,8 @@ def _parse_page_ranges(spec: str, page_count: int) -> list[int]:
         end = int(m.group(2)) if m.group(2) else start
         if start < 1 or end < 1 or start > end:
             raise HTTPException(400, f'Invalid page range segment: "{part}"')
+        if end > page_count:
+            raise HTTPException(400, f"Page {end} is out of range (document has {page_count} pages)")
         for i in range(start, end + 1):
             if i > page_count:
                 raise HTTPException(400, f"Page {i} is out of range (document has {page_count} pages)")
@@ -83,7 +87,7 @@ MAX_FILES = 50
 
 @router.post("/info")
 async def info(file: UploadFile = File(...)):
-    doc = _open_pdf(await file.read())
+    doc = _open_pdf(await read_upload(file))
     pages = [{"width": p.rect.width, "height": p.rect.height, "rotation": p.rotation} for p in doc]
     result = {"pageCount": doc.page_count, "pages": pages}
     doc.close()
@@ -105,18 +109,27 @@ async def organize(files: list[UploadFile] = File(...), plan: str = Form(...)):
     if len(plan_items) > 5000:
         raise HTTPException(400, "Too many pages in plan (max 5000)")
 
-    source_docs = [_open_pdf(await f.read()) for f in files]
+    source_docs = []
+    try:
+        for data in await read_many(files):
+            source_docs.append(_open_pdf(data))
+    except Exception:
+        for source in source_docs:
+            source.close()
+        raise
     output = fitz.open()
 
     try:
         for item in plan_items:
+            if not isinstance(item, dict):
+                raise HTTPException(400, "Each plan item must be an object")
             file_index = item.get("fileIndex")
             page_index = item.get("pageIndex")
             rotate = item.get("rotate") or 0
-            if file_index is None or not (0 <= file_index < len(source_docs)):
+            if type(file_index) is not int or not (0 <= file_index < len(source_docs)):
                 raise HTTPException(400, f"Invalid fileIndex {file_index} in plan")
             src = source_docs[file_index]
-            if page_index is None or not (0 <= page_index < src.page_count):
+            if type(page_index) is not int or not (0 <= page_index < src.page_count):
                 raise HTTPException(
                     400, f"Page {(page_index or 0) + 1} out of range for file #{file_index + 1} ({src.page_count} pages)"
                 )
@@ -140,8 +153,10 @@ async def split(file: UploadFile = File(...), ranges: str = Form(...)):
     if not spec:
         raise HTTPException(400, "`ranges` is required")
 
-    src = _open_pdf(await file.read())
+    src = _open_pdf(await read_upload(file))
     groups = [g.strip() for g in spec.split(",") if g.strip()]
+    if not groups or len(groups) > 500:
+        raise HTTPException(400, "Expected 1 to 500 page ranges")
 
     buf = io.BytesIO()
     try:
@@ -177,7 +192,7 @@ async def watermark(
     font_size = _clamp(fontSize, 6, 300)
     rgb = _hex_to_rgb(color)
 
-    doc = _open_pdf(await file.read())
+    doc = _open_pdf(await read_upload(file))
     for page in doc:
         width, height = page.rect.width, page.rect.height
         text_width = fitz.get_text_length(text, fontname="hebo", fontsize=font_size)
@@ -210,7 +225,7 @@ async def page_numbers(
     font_size = _clamp(fontSize, 6, 48)
     margin = 28
 
-    doc = _open_pdf(await file.read())
+    doc = _open_pdf(await read_upload(file))
     total = doc.page_count
     for i, page in enumerate(doc):
         label = format.replace("{n}", str(startAt + i)).replace("{total}", str(total))
@@ -243,20 +258,39 @@ async def images_to_pdf(files: list[UploadFile] = File(...)):
     margin = 24
 
     doc = fitz.open()
-    for f in files:
+    for f, raw in zip(files, await read_many(files)):
+        image_data = raw
         try:
-            pix = fitz.Pixmap(await f.read())
+            try:
+                pix = fitz.Pixmap(image_data)
+            except Exception:
+                # PyMuPDF does not decode WebP; normalize it with Pillow.
+                with Image.open(io.BytesIO(raw)) as source:
+                    if source.format != "WEBP":
+                        raise ValueError("Unsupported image format")
+                    if source.width * source.height > 36_000_000:
+                        raise ValueError("Image dimensions too large")
+                    converted = source.convert("RGBA" if "A" in source.getbands() else "RGB")
+                    buffer = io.BytesIO()
+                    converted.save(buffer, format="PNG")
+                    image_data = buffer.getvalue()
+                pix = fitz.Pixmap(image_data)
+            if pix.width * pix.height > 36_000_000:
+                raise ValueError("Image dimensions too large")
+            max_w, max_h = PAGE_W - margin * 2, PAGE_H - margin * 2
+            scale = min(max_w / pix.width, max_h / pix.height, 1)
+            w, h = pix.width * scale, pix.height * scale
+            page = doc.new_page(width=PAGE_W, height=PAGE_H)
+            rect = fitz.Rect(
+                (PAGE_W - w) / 2, (PAGE_H - h) / 2,
+                (PAGE_W - w) / 2 + w, (PAGE_H - h) / 2 + h,
+            )
+            # Inserting original PNG/JPEG bytes retains transparency and avoids
+            # unnecessarily expanding JPEGs to uncompressed pixmaps.
+            page.insert_image(rect, stream=image_data)
         except Exception as exc:  # noqa: BLE001
             doc.close()
-            raise HTTPException(400, f"Invalid image file: {f.filename}") from exc
-        if pix.alpha:
-            pix = fitz.Pixmap(pix, 0)
-        max_w, max_h = PAGE_W - margin * 2, PAGE_H - margin * 2
-        scale = min(max_w / pix.width, max_h / pix.height, 1)
-        w, h = pix.width * scale, pix.height * scale
-        page = doc.new_page(width=PAGE_W, height=PAGE_H)
-        rect = fitz.Rect((PAGE_W - w) / 2, (PAGE_H - h) / 2, (PAGE_W - w) / 2 + w, (PAGE_H - h) / 2 + h)
-        page.insert_image(rect, pixmap=pix)
+            raise HTTPException(400, f"Invalid, unsupported, or oversized image: {f.filename}") from exc
 
     data = doc.tobytes()
     doc.close()
@@ -268,7 +302,7 @@ async def inspect_content(file: UploadFile = File(...), page: int = Form(0)):
     """Identify native PDF text spans and image blocks for the interactive editor."""
     if file.content_type not in ("application/pdf", "application/octet-stream"):
         raise HTTPException(400, "Expected a PDF")
-    data = await file.read()
+    data = await read_upload(file)
     if len(data) > 50 * 1024 * 1024:
         raise HTTPException(413, "PDF exceeds the editor 50 MB limit")
     doc = _open_pdf(data)
@@ -291,7 +325,7 @@ async def edit_pdf(file: UploadFile = File(...), objects: str = Form(...)):
     if len(items) > 5000:
         raise HTTPException(400, "Too many objects (max 5000)")
 
-    pdf_data = await file.read()
+    pdf_data = await read_upload(file)
     if len(pdf_data) > 50 * 1024 * 1024:
         raise HTTPException(413, "PDF exceeds the editor 50 MB limit")
     doc = _open_pdf(pdf_data)

@@ -9,6 +9,8 @@ Handles the conversions that are impractical to do purely in Node:
 - PDF compression (PyMuPDF garbage collection + image downsampling)
 """
 
+import asyncio
+import logging
 import os
 import shutil
 import subprocess
@@ -23,6 +25,9 @@ from fastapi.responses import JSONResponse, Response
 from pdf2docx import Converter
 
 from routes_pdf import router as pdf_router
+from upload_limits import MAX_UPLOAD_BYTES, read_upload
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="S-PDF Converter Service")
 
@@ -35,15 +40,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "100")) * 1024 * 1024
-
-
 @app.middleware("http")
 async def limit_upload_size(request: Request, call_next):
     """Rejects oversized request bodies before they're buffered into memory."""
     content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > MAX_UPLOAD_BYTES:
-        return JSONResponse(status_code=413, content={"error": "File too large"})
+    try:
+        if content_length and int(content_length) > MAX_UPLOAD_BYTES:
+            return JSONResponse(status_code=413, content={"error": "File too large"})
+    except ValueError:
+        return JSONResponse(status_code=400, content={"error": "Invalid Content-Length"})
     return await call_next(request)
 
 
@@ -57,7 +62,8 @@ def _soffice_path() -> str | None:
 @app.get("/health")
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "libreoffice": bool(_soffice_path())}
+    available = bool(_soffice_path())
+    return {"status": "ok", "libreoffice": available, "wordToPdf": "available" if available else "unavailable"}
 
 
 @app.post("/api/convert/pdf-to-word")
@@ -68,14 +74,15 @@ async def pdf_to_word(file: UploadFile = File(...)):
     with tempfile.TemporaryDirectory() as tmp:
         pdf_path = Path(tmp) / "input.pdf"
         docx_path = Path(tmp) / "output.docx"
-        pdf_path.write_bytes(await file.read())
+        pdf_path.write_bytes(await read_upload(file))
 
         try:
             cv = Converter(str(pdf_path))
             cv.convert(str(docx_path))
             cv.close()
         except Exception as exc:  # noqa: BLE001
-            raise HTTPException(500, f"PDF to Word conversion failed: {exc}") from exc
+            logger.exception("PDF to Word conversion failed")
+            raise HTTPException(422, "PDF to Word conversion failed. Check that the PDF is valid and not encrypted.") from exc
 
         if not docx_path.exists():
             raise HTTPException(500, "Conversion did not produce an output file")
@@ -91,29 +98,56 @@ async def pdf_to_word(file: UploadFile = File(...)):
 
 @app.post("/api/convert/word-to-pdf")
 async def word_to_pdf(file: UploadFile = File(...)):
+    """Convert DOC/DOCX in an isolated LibreOffice profile per request."""
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in (".doc", ".docx"):
+        raise HTTPException(400, "Expected a .doc or .docx Word document")
     soffice = _soffice_path()
     if not soffice:
         raise HTTPException(
             503,
-            "Word to PDF conversion requires LibreOffice (soffice) to be installed on the server.",
+            "Word to PDF is unavailable: the server needs LibreOffice. "
+            "Deploy the converter using the provided container image.",
         )
 
     with tempfile.TemporaryDirectory() as tmp:
-        suffix = Path(file.filename or "input.docx").suffix or ".docx"
         docx_path = Path(tmp) / f"input{suffix}"
-        docx_path.write_bytes(await file.read())
+        docx_path.write_bytes(await read_upload(file))
+        profile = (Path(tmp) / "libreoffice-profile").as_uri()
+        try:
+            result = await asyncio.to_thread(
+                subprocess.run,
+                [
+                    soffice,
+                    f"-env:UserInstallation={profile}",
+                    "--headless",
+                    "--norestore",
+                    "--convert-to",
+                    "pdf",
+                    "--outdir",
+                    tmp,
+                    str(docx_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            logger.warning("LibreOffice conversion timed out")
+            raise HTTPException(504, "Word conversion timed out. Try a smaller document.") from exc
+        except OSError as exc:
+            logger.exception("LibreOffice process failed to start")
+            raise HTTPException(503, "Word conversion engine is unavailable.") from exc
 
-        result = subprocess.run(
-            [soffice, "--headless", "--norestore", "--convert-to", "pdf", "--outdir", tmp, str(docx_path)],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
         pdf_path = docx_path.with_suffix(".pdf")
         if result.returncode != 0 or not pdf_path.exists():
-            raise HTTPException(500, f"LibreOffice conversion failed: {result.stderr or result.stdout}")
+            logger.warning("LibreOffice conversion exited with code %s", result.returncode)
+            raise HTTPException(422, "Word conversion failed. Check that the document is valid and not password protected.")
 
         data = pdf_path.read_bytes()
+        if not data.startswith(b"%PDF-"):
+            raise HTTPException(502, "Word converter returned an invalid PDF")
         return Response(
             content=data,
             media_type="application/pdf",
@@ -129,7 +163,7 @@ async def pdf_to_images(file: UploadFile = File(...), dpi: int = Form(150)):
 
     with tempfile.TemporaryDirectory() as tmp:
         pdf_path = Path(tmp) / "input.pdf"
-        pdf_path.write_bytes(await file.read())
+        pdf_path.write_bytes(await read_upload(file))
         zip_path = Path(tmp) / "pages.zip"
 
         try:
@@ -169,7 +203,7 @@ async def compress(file: UploadFile = File(...), level: str = Form("medium")):
     with tempfile.TemporaryDirectory() as tmp:
         pdf_path = Path(tmp) / "input.pdf"
         out_path = Path(tmp) / "output.pdf"
-        pdf_path.write_bytes(await file.read())
+        pdf_path.write_bytes(await read_upload(file))
 
         try:
             doc = fitz.open(str(pdf_path))
@@ -179,7 +213,10 @@ async def compress(file: UploadFile = File(...), level: str = Form("medium")):
         except Exception as exc:  # noqa: BLE001
             raise HTTPException(500, f"Compression failed: {exc}") from exc
 
-        data = out_path.read_bytes()
+        optimized = out_path.read_bytes()
+        original = pdf_path.read_bytes()
+        # Re-encoding can expand already optimized PDFs. Never make them larger.
+        data = optimized if len(optimized) < len(original) else original
         return Response(
             content=data,
             media_type="application/pdf",
@@ -188,23 +225,38 @@ async def compress(file: UploadFile = File(...), level: str = Form("medium")):
 
 
 def _downsample_images(doc: "fitz.Document", max_dim: int, quality: int) -> None:
-    """Re-encodes oversized embedded images as JPEG to shrink file size."""
-    for xref in range(1, doc.xref_length()):
-        try:
-            info = doc.extract_image(xref)
-        except Exception:  # noqa: BLE001
-            continue
-        if not info:
-            continue
-        width, height = info.get("width", 0), info.get("height", 0)
-        if not width or not height or max(width, height) <= max_dim:
-            continue
-        try:
-            pix = fitz.Pixmap(doc, xref)
-            if pix.n - pix.alpha >= 4:  # CMYK -> RGB
-                pix = fitz.Pixmap(fitz.csRGB, pix)
-            scale = max_dim / max(width, height)
-            pix = fitz.Pixmap(pix, int(width * scale), int(height * scale), None)
-            doc.update_stream(xref, pix.tobytes("jpg", jpg_quality=quality))
-        except Exception:  # noqa: BLE001
-            continue
+    """Replace referenced opaque images via PyMuPDF's image API.
+
+    update_stream(xref, jpeg_bytes) alone is invalid: the PDF image dictionary
+    still declares the previous filter, width and height. replace_image updates
+    the image object metadata and all references consistently.
+    """
+    processed: set[int] = set()
+    for page in doc:
+        for image in page.get_images(full=True):
+            xref, smask = image[0], image[1]
+            if xref in processed:
+                continue
+            processed.add(xref)
+            if smask:  # Preserve transparent images and their soft masks.
+                continue
+            try:
+                if max(image[2], image[3]) <= max_dim:
+                    continue
+                pix = fitz.Pixmap(doc, xref)
+                if pix.alpha or max(pix.width, pix.height) <= max_dim:
+                    continue
+                if pix.n - pix.alpha >= 4:
+                    pix = fitz.Pixmap(fitz.csRGB, pix)
+                scale = max_dim / max(pix.width, pix.height)
+                small = fitz.Pixmap(
+                    pix,
+                    max(1, int(pix.width * scale)),
+                    max(1, int(pix.height * scale)),
+                    None,
+                )
+                jpeg = small.tobytes("jpg", jpg_quality=quality)
+                page.replace_image(xref, stream=jpeg)
+            except Exception:
+                # Do not damage unsupported image objects; preserve originals.
+                logger.exception("Skipping unsupported image during compression")

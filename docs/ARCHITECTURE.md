@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | Web | `apps/web` | React/Vite application, pdf.js previews, Fabric.js overlay editor |
 | Node API | `apps/api` | Express and pdf-lib PDF operations, used in local/Docker deployments |
-| Python converter | `services/converter` | FastAPI, PyMuPDF, pdf2docx, optional LibreOffice conversions |
+| Python converter | `services/converter` | FastAPI, PyMuPDF, pdf2docx and LibreOffice Writer; Vercel uses `Dockerfile.vercel` |
 
 In local/Docker deployments the Node API routes requests and may call the converter. The documented Vercel deployment instead routes PDF endpoints directly to the Python service. Consequently, **there are two implementations of multiple PDF endpoints**.
 
@@ -36,3 +36,8 @@ Self-hosting controls where uploads are processed; it does not remove the need f
 4. Verify reverse proxy request and response limits, timeout and CORS behavior.
 5. Confirm PDF-to-Word and Word-to-PDF availability in the deployed environment.
 6. Check that sensitive test fixtures are not present in logs or release artifacts.
+
+On Vercel the intended deployment has one Services project with `web` (Vite)
+and `converter` (Container runtime). Follow `docs/DEPLOY_VERCEL.md` to verify
+project ownership, health and conversion before any cutover. The old Python
+serverless runtime cannot provide the bundled LibreOffice binary.
