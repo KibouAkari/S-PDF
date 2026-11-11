@@ -135,7 +135,7 @@ class PdfToolRoutesTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.text[:200])
         with zipfile.ZipFile(io.BytesIO(result.content)) as archive:
             self.assertEqual(archive.namelist(), ["page-1.png", "page-2.png"])
-            self.assertTrue(archive.read("page-1.png").startswith(b"\\x89PNG\\r\\n\\x1a\\n"))
+            self.assertEqual(archive.read("page-1.png")[:8], bytes([137, 80, 78, 71, 13, 10, 26, 10]))
 
     def test_compression_preserves_valid_image_objects(self):
         original = make_pdf(with_image=True)
