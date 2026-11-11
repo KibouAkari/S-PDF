@@ -113,7 +113,7 @@ service (there is no Node API in this deployment path):
       "framework": "vite",
       "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
     },
-    "converter": { "root": "services/converter", "entrypoint": "main:app" }
+    "converter": { "root": "services/converter", "runtime": "container", "entrypoint": "Dockerfile.vercel" }
   },
   "rewrites": [
     { "source": "/api(/.*)?", "destination": { "type": "service", "service": "converter" } },
@@ -123,9 +123,9 @@ service (there is no Node API in this deployment path):
 ```
 
 - This uses Vercel's [Services](https://vercel.com/docs/services) feature
-  (not classic zero-config Functions), so the Python service needs an explicit
-  `entrypoint: "main:app"` pointing at the FastAPI `app` object in
-  `services/converter/main.py` - there's no `api/` folder involved.
+  (not classic zero-config Functions), so the converter uses a container
+  `runtime: "container"` and `entrypoint: "Dockerfile.vercel"` for the converter.
+  The Dockerfile installs LibreOffice and starts the FastAPI application.
 - The `web` service's own `rewrites` fall back every path to `/index.html`.
   Without this, visiting a client-side route directly (e.g. `/tools/organize`,
   or any unknown path meant to hit the custom 404 page) returns Vercel's
@@ -133,9 +133,12 @@ service (there is no Node API in this deployment path):
   that path doesn't actually exist on disk.
 - Import the repo into Vercel as a single project; it will pick up both
   services from `vercel.json` automatically.
-- **Known limitation:** Word→PDF needs LibreOffice, which isn't available in
-  Vercel's serverless Python runtime - that endpoint will return a clear 503
-  there. It works fully in Docker/self-hosted deployments (see below).
+- **Word→PDF:** the Python serverless runtime lacks LibreOffice, so the
+  converter now uses a Vercel **Container** service with LibreOffice Writer.
+  Configure the project as **Services** with the repository root as its root,
+  and verify a real DOCX conversion in a preview before deploying to production.
+  Without this configuration the endpoint still returns 503.
+  See [Vercel migration and test checklist](docs/DEPLOY_VERCEL.md).
 - **Known risk:** `pdf2docx` pulls in `opencv-python-headless` + `numpy`,
   which can push the function bundle close to Vercel's size limits. If a
   deploy fails on size, that's the first place to look.
