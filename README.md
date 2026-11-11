@@ -123,8 +123,8 @@ service (there is no Node API in this deployment path):
 ```
 
 - This uses Vercel's [Services](https://vercel.com/docs/services) feature
-  (not classic zero-config Functions), so the converter uses a container
-  `runtime: "container"` and `entrypoint: "Dockerfile.vercel"` for the converter.
+  (not classic zero-config Functions), so the converter uses
+  `runtime: "container"` and `entrypoint: "Dockerfile.vercel"`.
   The Dockerfile installs LibreOffice and starts the FastAPI application.
 - The `web` service's own `rewrites` fall back every path to `/index.html`.
   Without this, visiting a client-side route directly (e.g. `/tools/organize`,
@@ -151,14 +151,15 @@ apps/
   api/      Express API - pdf-lib based; used for local dev & Docker
 services/
   converter/  FastAPI microservice - full PDF API (PyMuPDF) + pdf2docx / LibreOffice conversions
-    main.py     entrypoint referenced by vercel.json as "main:app"
+    main.py     FastAPI application loaded by the container server
+    Dockerfile.vercel  Vercel container image with LibreOffice Writer
 ```
 
 ## Notes & limitations
 
 - Word→PDF requires LibreOffice (`soffice`) installed on the machine running
-  the converter service (bundled automatically in the Docker image; not
-  available on Vercel).
+  the converter service (bundled in both Docker images and the Vercel
+  container runtime, but **not** the ordinary Vercel Python serverless runtime).
 - The visual editor can reconstruct selected native text, raster images, and simple line/rectangle paths with PyMuPDF. Changes remove the selected original content where supported. Layout may change. A white overlay rectangle is **not** a secure redaction, and S-PDF has no security-verified privacy-redaction workflow.
 - Original document fonts, complex graphics, scanned text, form fields, and annotation round-trips are not preserved by arbitrary changes. See [Native Editing](docs/NATIVE_EDITING.md).
 
