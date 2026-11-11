@@ -126,6 +126,18 @@ class PdfToolRoutesTests(unittest.TestCase):
             for page in doc:
                 self.assertEqual(len(page.get_images()), 1)
 
+    def test_pdf_to_word_returns_editable_docx(self):
+        from docx import Document
+        response = self.client.post(
+            "/api/convert/pdf-to-word",
+            files=pdf_file(self.pdf),
+        )
+        self.assertEqual(response.status_code, 200, response.text[:200])
+        self.assertTrue(response.content.startswith(b"PK"))
+        converted = Document(io.BytesIO(response.content))
+        text = "\\n".join(p.text for p in converted.paragraphs)
+        self.assertIn("First page", text)
+
     def test_pdf_to_png_zip(self):
         result = self.client.post(
             "/api/convert/pdf-to-images",
