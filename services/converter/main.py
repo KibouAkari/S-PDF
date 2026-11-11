@@ -241,6 +241,8 @@ def _downsample_images(doc: "fitz.Document", max_dim: int, quality: int) -> None
             if smask:  # Preserve transparent images and their soft masks.
                 continue
             try:
+                if max(image[2], image[3]) <= max_dim:
+                    continue
                 pix = fitz.Pixmap(doc, xref)
                 if pix.alpha or max(pix.width, pix.height) <= max_dim:
                     continue
