@@ -3,3 +3,4 @@ uvicorn[standard]==0.54.0
 python-multipart==0.0.32
 pdf2docx==0.5.13
 PyMuPDF==2.0
+Pillow==13.0.0
